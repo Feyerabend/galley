@@ -1,0 +1,399 @@
+{
+ "version": 1,
+ "title": "Fonts that come along",
+ "page": {
+  "width": 595,
+  "height": 842
+ },
+ "margins": {
+  "top": 56.69291338582678,
+  "bottom": 56.69291338582678,
+  "left": 56.69291338582678,
+  "right": 56.69291338582678
+ },
+ "columns": {
+  "count": 2,
+  "gutter": 14.173228346456694
+ },
+ "guides": {
+  "x": [],
+  "y": []
+ },
+ "stories": [
+  {
+   "id": "s1",
+   "text": "Fonts that come along",
+   "font": "PTSerif-Bold",
+   "size": 34,
+   "leading": 38,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "i1"
+   ]
+  },
+  {
+   "id": "s2",
+   "text": "Type 42: TrueType, carried in PostScript",
+   "font": "PTSans-Italic",
+   "size": 13,
+   "leading": 16,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "i2"
+   ]
+  },
+  {
+   "id": "s3",
+   "text": "A printer of 1985 had its fonts inside it, thirty-five of them in the end, and a page that asked for Times or Helvetica by name was printed in them. A font it had not got had to be sent with the page: a Type 1 font, as an outline program, before the page that used it.\nTrueType came later, and printers learned to take it too, wrapped as PostScript: Type 42, whose glyphs are TrueType's own tables, carried in strings. This page is set in three families made for the screen and for print, PT Serif and PT Sans, drawn by ParaType, and Courier Prime, a better Courier. They are free, under the SIL Open Font License, so they may go with the program, and with every page it writes.\nGalley sends with the page each font it uses: into PostScript as a Type 42 font, keeping only the glyphs its encoding reaches; into PDF as the TrueType file itself. Nothing is asked of the printer but the language.\nÅsa, Örjan and Märta are here too, with “quotes”, dashes — and the ellipsis…",
+   "font": "PTSerif-Regular",
+   "size": 10.5,
+   "leading": 13.5,
+   "align": "justify",
+   "indent": 12,
+   "spaceAfter": 0,
+   "frames": [
+    "i4",
+    "i5"
+   ]
+  },
+  {
+   "id": "s10",
+   "text": "PTSerif-Regular: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSerif-Regular",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t0"
+   ]
+  },
+  {
+   "id": "s11",
+   "text": "PTSerif-Italic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSerif-Italic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t1"
+   ]
+  },
+  {
+   "id": "s12",
+   "text": "PTSerif-Bold: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSerif-Bold",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t2"
+   ]
+  },
+  {
+   "id": "s13",
+   "text": "PTSerif-BoldItalic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSerif-BoldItalic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t3"
+   ]
+  },
+  {
+   "id": "s14",
+   "text": "PTSans-Regular: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSans-Regular",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t4"
+   ]
+  },
+  {
+   "id": "s15",
+   "text": "PTSans-Italic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSans-Italic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t5"
+   ]
+  },
+  {
+   "id": "s16",
+   "text": "PTSans-Bold: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSans-Bold",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t6"
+   ]
+  },
+  {
+   "id": "s17",
+   "text": "PTSans-BoldItalic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "PTSans-BoldItalic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t7"
+   ]
+  },
+  {
+   "id": "s18",
+   "text": "CourierPrime-Regular: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "CourierPrime-Regular",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t8"
+   ]
+  },
+  {
+   "id": "s19",
+   "text": "CourierPrime-Italic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "CourierPrime-Italic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t9"
+   ]
+  },
+  {
+   "id": "s20",
+   "text": "CourierPrime-Bold: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "CourierPrime-Bold",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t10"
+   ]
+  },
+  {
+   "id": "s21",
+   "text": "CourierPrime-BoldItalic: Hamburgefonstiv 0123 äöå “Æ” — …",
+   "font": "CourierPrime-BoldItalic",
+   "size": 13,
+   "leading": 17,
+   "align": "left",
+   "indent": 0,
+   "spaceAfter": 0,
+   "frames": [
+    "t11"
+   ]
+  }
+ ],
+ "pages": [
+  {
+   "items": [
+    {
+     "id": "i1",
+     "type": "text",
+     "x": 56.69291338582678,
+     "y": 56.69291338582678,
+     "w": 481.61417322834643,
+     "h": 44,
+     "story": "s1"
+    },
+    {
+     "id": "i2",
+     "type": "text",
+     "x": 56.69291338582678,
+     "y": 102.69291338582678,
+     "w": 481.61417322834643,
+     "h": 20,
+     "story": "s2"
+    },
+    {
+     "id": "i3",
+     "type": "line",
+     "x1": 56.69291338582678,
+     "y1": 128.69291338582678,
+     "x2": 538.3070866141733,
+     "y2": 128.69291338582678,
+     "stroke": {
+      "width": 1,
+      "grey": 0,
+      "dash": false
+     }
+    },
+    {
+     "id": "i4",
+     "type": "text",
+     "x": 56.69291338582678,
+     "y": 140.69291338582678,
+     "w": 233.72047244094486,
+     "h": 190,
+     "story": "s3"
+    },
+    {
+     "id": "i5",
+     "type": "text",
+     "x": 304.5866141732283,
+     "y": 140.69291338582678,
+     "w": 233.72047244094486,
+     "h": 190,
+     "story": "s3"
+    },
+    {
+     "id": "i6",
+     "type": "rect",
+     "x": 56.69291338582678,
+     "y": 360,
+     "w": 481.61417322834643,
+     "h": 336,
+     "radius": 6,
+     "stroke": {
+      "width": 0.5,
+      "grey": 0,
+      "dash": false
+     },
+     "fill": 0.95
+    },
+    {
+     "id": "t0",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 372,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s10"
+    },
+    {
+     "id": "t1",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 398,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s11"
+    },
+    {
+     "id": "t2",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 424,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s12"
+    },
+    {
+     "id": "t3",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 450,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s13"
+    },
+    {
+     "id": "t4",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 476,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s14"
+    },
+    {
+     "id": "t5",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 502,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s15"
+    },
+    {
+     "id": "t6",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 528,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s16"
+    },
+    {
+     "id": "t7",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 554,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s17"
+    },
+    {
+     "id": "t8",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 580,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s18"
+    },
+    {
+     "id": "t9",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 606,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s19"
+    },
+    {
+     "id": "t10",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 632,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s20"
+    },
+    {
+     "id": "t11",
+     "type": "text",
+     "x": 70.69291338582678,
+     "y": 658,
+     "w": 453.61417322834643,
+     "h": 22,
+     "story": "s21"
+    }
+   ]
+  }
+ ],
+ "nextId": 100
+}

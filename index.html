@@ -1,0 +1,1638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galley</title>
+<!--
+  Galley: a page-layout program after the early ones, in one page of
+  the browser, opened as a file. With layout.js, which sets the text
+  and writes the PostScript; pdf.js, which writes the PDF; truetype.js,
+  which reads the fonts; and fonts/, the fonts that come with it, each a
+  TrueType font under its own licence, as a script loaded when wanted.
+-->
+<style>
+:root {
+  --ink: #111; --paper: #fff; --board: #d8d8d4; --chrome: #f3f3f0; --line: #9a9a95;
+  --margin: #d0309a; --column: #2a62d8; --ruler: #12a0b8; --select: #111; --warn: #d0202a;
+  --muted: #6a6a66; --hilite: #111; --hilite-ink: #fff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--chrome); color: var(--ink); font: 13px/1.35 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+       display: grid; grid-template-rows: 24px 1fr 28px; overflow: hidden; }
+button, select, input, textarea { font: inherit; color: inherit; }
+
+/* The menu bar */
+#menubar { display: flex; align-items: stretch; border-bottom: 1px solid var(--ink); background: var(--paper); padding-left: 8px; user-select: none; }
+#menubar .title { font-weight: 700; padding: 3px 12px 0 4px; }
+.menu { position: relative; }
+.menu > button { border: 0; background: none; padding: 0 10px; height: 100%; cursor: default; }
+.menu.open > button { background: var(--hilite); color: var(--hilite-ink); }
+.menu .items { display: none; position: absolute; left: 0; top: 23px; min-width: 210px; background: var(--paper);
+               border: 1px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); z-index: 20; padding: 2px 0; }
+.menu.open .items { display: block; }
+.items button { display: flex; width: 100%; border: 0; background: none; text-align: left; padding: 2px 14px 2px 22px; cursor: default; position: relative; }
+.items button:hover:not(:disabled) { background: var(--hilite); color: var(--hilite-ink); }
+.items button:disabled { color: #aaa; }
+.items button .key { margin-left: auto; padding-left: 20px; opacity: .7; }
+.items button.checked::before { content: "✓"; position: absolute; left: 7px; }
+.items hr { border: 0; border-top: 1px dotted var(--line); margin: 2px 0; }
+
+#main { display: grid; grid-template-columns: 46px 1fr 286px; min-height: 0; }
+
+/* The toolbox */
+#toolbox { border-right: 1px solid var(--ink); background: var(--paper); display: flex; flex-direction: column; align-items: center; padding-top: 8px; gap: 2px; }
+#toolbox button { width: 34px; height: 30px; border: 1px solid transparent; background: none; display: grid; place-items: center; cursor: default; }
+#toolbox button:hover { border-color: var(--line); }
+#toolbox button.on { background: var(--hilite); color: var(--hilite-ink); }
+#toolbox svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.4; }
+
+#work { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+#canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+#banner { position: absolute; left: 50%; top: 30px; transform: translateX(-50%); background: var(--paper); border: 1px solid var(--ink);
+          padding: 4px 12px; box-shadow: 2px 2px 0 var(--ink); display: none; pointer-events: none; }
+
+/* The panel at the right */
+#panel { border-left: 1px solid var(--ink); background: var(--paper); overflow-y: auto; padding: 10px 12px 20px; }
+#panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+#panel h3:first-child { margin-top: 2px; }
+#panel label { display: grid; grid-template-columns: 86px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
+#panel input[type=number], #panel input[type=text], #panel select { width: 100%; border: 1px solid var(--line); background: var(--paper); padding: 2px 4px; min-width: 0; }
+#panel .xywh { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
+#panel .xywh label { grid-template-columns: 18px 1fr; }
+#panel textarea { width: 100%; height: 260px; border: 1px solid var(--line); padding: 6px; resize: vertical; font: 13px/1.4 Georgia, Times, serif; background: var(--paper); }
+#panel .seg { display: flex; border: 1px solid var(--ink); }
+#panel .seg button { flex: 1; border: 0; border-left: 1px solid var(--ink); background: var(--paper); padding: 2px 0; cursor: default; }
+#panel .seg button:first-child { border-left: 0; }
+#panel .seg button.on { background: var(--hilite); color: var(--hilite-ink); }
+#panel .note { color: var(--muted); font-size: 12px; margin: 6px 0; }
+#panel .warn { color: var(--warn); }
+#panel .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.btn { border: 1px solid var(--ink); background: var(--paper); padding: 2px 10px; border-radius: 3px; cursor: default; }
+.btn:active:not(:disabled) { background: var(--hilite); color: var(--hilite-ink); }
+.btn:disabled { opacity: .45; }
+
+/* The status bar */
+#status { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--ink); background: var(--paper); padding: 0 8px; min-width: 0; }
+#pages { display: flex; gap: 3px; align-items: center; overflow-x: auto; }
+#pages button { min-width: 22px; height: 18px; border: 1px solid var(--ink); background: var(--paper); font-size: 11px; padding: 0 3px; cursor: default; }
+#pages button.on { background: var(--hilite); color: var(--hilite-ink); }
+#status .seg { display: flex; border: 1px solid var(--ink); margin-left: auto; }
+#status .seg button { border: 0; border-left: 1px solid var(--ink); background: var(--paper); padding: 0 8px; height: 18px; font-size: 12px; cursor: default; }
+#status .seg button:first-child { border-left: 0; }
+#status .seg button.on { background: var(--hilite); color: var(--hilite-ink); }
+#status select { height: 20px; font-size: 12px; background: var(--paper); border: 1px solid var(--line); }
+#message { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; min-width: 0; flex: 1; }
+
+/* Dialogs */
+dialog { border: 1px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); padding: 16px 18px; background: var(--paper); color: var(--ink); }
+dialog::backdrop { background: rgba(0,0,0,.15); }
+dialog h2 { font-size: 14px; margin: 0 0 12px; }
+dialog fieldset { border: 1px solid var(--line); margin: 0 0 10px; padding: 6px 10px 8px; }
+dialog legend { font-size: 12px; color: var(--muted); }
+dialog label { display: grid; grid-template-columns: 100px 120px; gap: 8px; align-items: center; margin: 4px 0; }
+dialog input, dialog select { border: 1px solid var(--line); padding: 2px 4px; background: var(--paper); }
+dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+dialog pre { max-height: 300px; overflow: auto; background: var(--chrome); padding: 8px; font-size: 12px; white-space: pre-wrap; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ink: #e8e8e4; --paper: #232322; --board: #3b3b39; --chrome: #2c2c2a; --line: #77776f;
+    --muted: #a5a59f; --hilite: #e8e8e4; --hilite-ink: #1b1b1a; --select: #e8e8e4; }
+}
+:root[data-theme="dark"] { --ink: #e8e8e4; --paper: #232322; --board: #3b3b39; --chrome: #2c2c2a; --line: #77776f;
+    --muted: #a5a59f; --hilite: #e8e8e4; --hilite-ink: #1b1b1a; --select: #e8e8e4; }
+</style>
+</head>
+<body>
+
+<nav id="menubar">
+  <span class="title">Galley</span>
+  <div class="menu"><button>File</button><div class="items">
+    <button data-cmd="new">New</button>
+    <button data-cmd="open">Open…<span class="key">⌘O</span></button>
+    <div id="examplemenu"></div>
+    <button data-cmd="save">Save<span class="key">⌘S</span></button>
+    <hr>
+    <button data-cmd="pagesetup">Page setup…</button>
+    <hr>
+    <button data-cmd="exportps">Export PostScript…<span class="key">⌘E</span></button>
+    <button data-cmd="exportpdf">Export PDF…</button>
+    <button data-cmd="showps">Show the PostScript</button>
+    <hr>
+    <button data-cmd="addfonts">Add fonts…</button>
+    <button data-cmd="addfontfolder">Add a folder of fonts…</button>
+    <button data-cmd="forgetfonts">Forget the added fonts</button>
+  </div></div>
+  <div class="menu"><button>Edit</button><div class="items">
+    <button data-cmd="undo">Undo<span class="key">⌘Z</span></button>
+    <button data-cmd="redo">Redo<span class="key">⇧⌘Z</span></button>
+    <hr>
+    <button data-cmd="cut">Cut<span class="key">⌘X</span></button>
+    <button data-cmd="copy">Copy<span class="key">⌘C</span></button>
+    <button data-cmd="paste">Paste<span class="key">⌘V</span></button>
+    <button data-cmd="duplicate">Duplicate<span class="key">⌘D</span></button>
+    <button data-cmd="delete">Delete<span class="key">⌫</span></button>
+  </div></div>
+  <div class="menu"><button>Element</button><div class="items">
+    <button data-cmd="front">Bring to front<span class="key">⌘F</span></button>
+    <button data-cmd="back">Send to back<span class="key">⌘B</span></button>
+  </div></div>
+  <div class="menu"><button>Layout</button><div class="items">
+    <button data-cmd="insertpage">Insert page after this</button>
+    <button data-cmd="removepage">Remove this page</button>
+    <hr>
+    <button data-cmd="guides" data-check="showGuides">Guides</button>
+    <button data-cmd="snap" data-check="snap">Snap to guides</button>
+    <button data-cmd="clearguides">Remove ruler guides</button>
+    <hr>
+    <button data-cmd="fit">Fit in window<span class="key">⌘0</span></button>
+    <button data-cmd="zoom50">50% size</button>
+    <button data-cmd="zoom75">75% size</button>
+    <button data-cmd="zoom100">Actual size<span class="key">⌘1</span></button>
+    <button data-cmd="zoom200">200% size<span class="key">⌘2</span></button>
+    <button data-cmd="zoom400">400% size</button>
+  </div></div>
+  <div class="menu"><button>View</button><div class="items">
+  </div></div>
+</nav>
+
+<div id="main">
+  <div id="toolbox">
+    <button data-tool="pointer" title="Pointer (V)"><svg viewBox="0 0 20 20"><path d="M5 2 L5 16 L8.5 12.6 L11 18 L13 17 L10.5 11.6 L15 11.6 Z" fill="currentColor" stroke="none"/></svg></button>
+    <button data-tool="text" title="Text (T)"><svg viewBox="0 0 20 20"><path d="M4 4 H16 M10 4 V17 M7.5 17 H12.5" stroke-width="1.8"/></svg></button>
+    <button data-tool="line" title="Line, any angle (L)"><svg viewBox="0 0 20 20"><path d="M3 17 L17 3"/></svg></button>
+    <button data-tool="hline" title="Line, at 0, 45 or 90 degrees (H)"><svg viewBox="0 0 20 20"><path d="M3 10 H17 M10 3 V17"/></svg></button>
+    <button data-tool="rect" title="Box (B)"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12"/></svg></button>
+    <button data-tool="round" title="Box with rounded corners (R)"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="4"/></svg></button>
+    <button data-tool="oval" title="Oval (O)"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="7.5" ry="6"/></svg></button>
+  </div>
+  <div id="work">
+    <canvas id="canvas" tabindex="0"></canvas>
+    <div id="banner"></div>
+  </div>
+  <aside id="panel"></aside>
+</div>
+
+<footer id="status">
+  <div id="pages"></div>
+  <select id="zoom" title="Size">
+    <option value="fit">Fit</option><option value="0.25">25%</option><option value="0.5">50%</option>
+    <option value="0.75">75%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option>
+  </select>
+  <span id="message"></span>
+</footer>
+
+<input type="file" id="openfile" accept=".json,application/json" hidden>
+<input type="file" id="fontfile" accept=".ttf,.otf,font/ttf" multiple hidden>
+<input type="file" id="fontfolder" webkitdirectory multiple hidden>
+
+<dialog id="setup">
+  <form method="dialog">
+    <h2>Page setup</h2>
+    <fieldset><legend>Page</legend>
+      <label>Size <select id="su-size">
+        <option value="595x842">A4</option><option value="420x595">A5</option><option value="842x1191">A3</option>
+        <option value="612x792">Letter</option><option value="612x1008">Legal</option><option value="792x1224">Tabloid</option>
+        <option value="custom">Custom</option></select></label>
+      <label>Width <input id="su-w" type="number" step="any" min="36"></label>
+      <label>Height <input id="su-h" type="number" step="any" min="36"></label>
+      <label>Units <select id="su-units"><option value="mm">millimetres</option><option value="in">inches</option><option value="pt">points</option></select></label>
+    </fieldset>
+    <fieldset><legend>Margins</legend>
+      <label>Top <input id="su-mt" type="number" step="any" min="0"></label>
+      <label>Bottom <input id="su-mb" type="number" step="any" min="0"></label>
+      <label>Left <input id="su-ml" type="number" step="any" min="0"></label>
+      <label>Right <input id="su-mr" type="number" step="any" min="0"></label>
+    </fieldset>
+    <fieldset><legend>Columns</legend>
+      <label>Number <input id="su-cols" type="number" min="1" max="12" step="1"></label>
+      <label>Space between <input id="su-gut" type="number" step="any" min="0"></label>
+    </fieldset>
+    <div class="buttons"><button class="btn" value="cancel">Cancel</button><button class="btn" value="ok" id="su-ok">OK</button></div>
+  </form>
+</dialog>
+
+<dialog id="showps">
+  <form method="dialog">
+    <h2>The PostScript</h2>
+    <pre id="ps-text"></pre>
+    <div class="buttons"><button class="btn" value="ok">Close</button></div>
+  </form>
+</dialog>
+
+<script src="layout.js"></script>
+<script src="truetype.js"></script>
+<script src="pdf.js"></script>
+<script src="fonts/index.js"></script>
+<script src="examples/index.js"></script>
+<script>
+"use strict";
+var L = window.Galley;
+
+/* ---------- State ---------- */
+
+var doc, set;                        /* the document, and its text as set */
+var pageIndex = 0, selected = null;  /* the page shown, the item selected (an id) */
+var tool = "pointer";
+var loaded = null;                   /* text to place: { story, after } */
+var drag = null;                     /* what the mouse is doing */
+var undoStack = [], redoStack = [], lastUndoTag = null, lastUndoTime = 0;
+var clipboard = null;
+var opts = { snap: true, showGuides: true, units: "mm", view: "screen" };
+var defaults = { font: "PTSerif-Regular", size: 12, leading: null, align: "left", indent: 0, spaceAfter: 0 };
+var view = { zoom: "fit", scale: 1, ox: 0, oy: 0 };
+var RULER = 20, PX = 4 / 3;          /* a ruler's width; CSS pixels to a point at 100% */
+
+var canvas = document.getElementById("canvas"), ctx = canvas.getContext("2d");
+var work = document.getElementById("work"), panel = document.getElementById("panel");
+
+function store(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+/* ---------- Units ---------- */
+
+var UNIT = { pt: 1, mm: 72 / 25.4, in: 72 };
+function toUnit(v) { return +(v / UNIT[opts.units]).toFixed(opts.units === "pt" ? 1 : 2); }
+function fromUnit(v) { return v * UNIT[opts.units]; }
+
+/* ---------- The document ---------- */
+
+function newId(prefix) { return prefix + (doc.nextId++); }
+
+function findItem(id) {
+  for (var p = 0; p < doc.pages.length; p++) {
+    var items = doc.pages[p].items;
+    for (var i = 0; i < items.length; i++) if (items[i].id === id) return { page: p, index: i, item: items[i] };
+  }
+  return null;
+}
+function selectedItem() { var f = selected && findItem(selected); return f ? f.item : null; }
+function pageItems() { return doc.pages[pageIndex].items; }
+
+function load(d) {
+  doc = d;
+  if (!doc.nextId) doc.nextId = 1;
+  if (!doc.guides) doc.guides = { x: [], y: [] };
+  pageIndex = Math.min(pageIndex, doc.pages.length - 1);
+  selected = null; loaded = null;
+  relayout();
+}
+
+function relayout() { set = L.setDocument(doc); if (typeof screenFonts === "function") screenFonts(); }
+
+/* Every change goes through here: an undo point first, unless it is
+   one more of a run of the same (typing, say), then the text set again,
+   the screen drawn, and the document kept. */
+function change(tag, fn) {
+  var now = Date.now();
+  if (!(tag && tag === lastUndoTag && now - lastUndoTime < 1500)) {
+    undoStack.push(JSON.stringify(doc));
+    if (undoStack.length > 200) undoStack.shift();
+    redoStack = [];
+  }
+  lastUndoTag = tag; lastUndoTime = now;
+  fn();
+  changed();
+}
+
+function changed() {
+  relayout();
+  draw();
+  refreshPanel();
+  pagesBar();
+  store("galley.doc", JSON.stringify(doc));
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(doc));
+  var keep = selected;
+  load(JSON.parse(undoStack.pop()));
+  if (findItem(keep)) selected = keep;
+  lastUndoTag = null;
+  buildPanel(); changed();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(doc));
+  var keep = selected;
+  load(JSON.parse(redoStack.pop()));
+  if (findItem(keep)) selected = keep;
+  lastUndoTag = null;
+  buildPanel(); changed();
+}
+
+/* ---------- The view ---------- */
+
+function resize() {
+  var r = work.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+  if (view.zoom === "fit") fit();
+  draw();
+}
+
+function fit() {
+  var r = work.getBoundingClientRect(), W = doc.page.width, H = doc.page.height;
+  var s = Math.min((r.width - RULER - 60) / W, (r.height - RULER - 60) / H);
+  view.scale = Math.max(s, 0.05);
+  view.ox = RULER + (r.width - RULER - W * view.scale) / 2;
+  view.oy = RULER + (r.height - RULER - H * view.scale) / 2;
+}
+
+function setZoom(z, cx, cy) {
+  var r = work.getBoundingClientRect();
+  if (z === "fit") { view.zoom = "fit"; fit(); }
+  else {
+    if (cx === undefined) { cx = r.width / 2; cy = r.height / 2; }
+    var px = (cx - view.ox) / view.scale, py = (cy - view.oy) / view.scale;
+    view.zoom = z; view.scale = z * PX;
+    view.ox = cx - px * view.scale; view.oy = cy - py * view.scale;
+  }
+  document.getElementById("zoom").value = view.zoom === "fit" ? "fit" :
+    (["0.25", "0.5", "0.75", "1", "2", "4"].indexOf(String(view.zoom)) >= 0 ? String(view.zoom) : "");
+  draw();
+}
+
+function toPage(e) {
+  var r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left - view.ox) / view.scale, y: (e.clientY - r.top - view.oy) / view.scale,
+           sx: e.clientX - r.left, sy: e.clientY - r.top };
+}
+
+/* ---------- Drawing ---------- */
+
+var css = {};
+function colours() {
+  var s = getComputedStyle(document.documentElement);
+  ["--ink", "--paper", "--board", "--line", "--margin", "--column", "--ruler", "--select", "--warn", "--muted", "--chrome"]
+    .forEach(function (k) { css[k.slice(2)] = s.getPropertyValue(k).trim(); });
+}
+
+function grey(g) { var v = Math.round(g * 255); return "rgb(" + v + "," + v + "," + v + ")"; }
+
+function draw() {
+  if (!doc) return;
+  var dpr = window.devicePixelRatio || 1, cw = canvas.width / dpr, ch = canvas.height / dpr;
+  var W = doc.page.width, H = doc.page.height, s = view.scale;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = css.board; ctx.fillRect(0, 0, cw, ch);
+
+  /* the page, on the pasteboard, with its shadow */
+  ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(view.ox + 4, view.oy + 4, W * s, H * s);
+  ctx.fillStyle = "#fff"; ctx.fillRect(view.ox, view.oy, W * s, H * s);
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+  ctx.strokeRect(Math.round(view.ox) - .5, Math.round(view.oy) - .5, Math.round(W * s) + 1, Math.round(H * s) + 1);
+
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * view.ox, dpr * view.oy);
+  if (opts.showGuides) drawGuides(false);
+  pageItems().forEach(drawItem);
+  pageItems().forEach(function (it) { if (it.type === "text") drawFrameOutline(it); });
+  var it = selectedItem();
+  if (it && findItem(it.id).page === pageIndex) drawSelection(it);
+  if (drag && drag.kind === "create") drawRubber();
+  if (drag && drag.kind === "guide") drawGuideDrag();
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawRulers(cw, ch);
+  banner();
+}
+
+function hairline() { return 1 / view.scale; }
+
+function drawGuides(faint) {
+  var W = doc.page.width, H = doc.page.height, m = doc.margins, g = L.guides(doc);
+  ctx.save();
+  ctx.globalAlpha = faint ? 0.5 : 1;
+  ctx.lineWidth = hairline();
+  ctx.setLineDash([3 / view.scale, 2 / view.scale]);
+  ctx.strokeStyle = css.column;
+  g.columns.forEach(function (c, i) {
+    if (i > 0) vline(c.x, m.top, H - m.bottom);
+    if (i < g.columns.length - 1) vline(c.x + c.w, m.top, H - m.bottom);
+  });
+  ctx.setLineDash([]);
+  ctx.strokeStyle = css.margin;
+  ctx.strokeRect(m.left, m.top, W - m.left - m.right, H - m.top - m.bottom);
+  ctx.strokeStyle = css.ruler;
+  ctx.setLineDash([1 / view.scale, 2 / view.scale]);
+  doc.guides.x.forEach(function (x) { vline(x, -100000, 100000); });
+  doc.guides.y.forEach(function (y) { hline(y, -100000, 100000); });
+  ctx.restore();
+}
+function vline(x, y0, y1) { ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); }
+function hline(y, x0, x1) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+
+function shapePath(it) {
+  ctx.beginPath();
+  if (it.type === "oval") {
+    ctx.ellipse(it.x + it.w / 2, it.y + it.h / 2, Math.abs(it.w / 2), Math.abs(it.h / 2), 0, 0, 2 * Math.PI);
+    return;
+  }
+  var r = Math.min(it.radius || 0, Math.abs(it.w) / 2, Math.abs(it.h) / 2);
+  if (r > 0) {
+    ctx.moveTo(it.x + r, it.y);
+    ctx.arcTo(it.x + it.w, it.y, it.x + it.w, it.y + it.h, r);
+    ctx.arcTo(it.x + it.w, it.y + it.h, it.x, it.y + it.h, r);
+    ctx.arcTo(it.x, it.y + it.h, it.x, it.y, r);
+    ctx.arcTo(it.x, it.y, it.x + it.w, it.y, r);
+    ctx.closePath();
+  } else ctx.rect(it.x, it.y, it.w, it.h);
+}
+
+function strokeWith(st) {
+  ctx.lineWidth = Math.max(st.width, hairline());
+  ctx.strokeStyle = grey(st.grey);
+  ctx.setLineDash(st.dash ? [st.width * 3, st.width * 2] : []);
+  ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawItem(it) {
+  if (it.type === "line") {
+    if (!it.stroke) return;
+    ctx.beginPath(); ctx.moveTo(it.x1, it.y1); ctx.lineTo(it.x2, it.y2); strokeWith(it.stroke);
+  } else if (it.type === "rect" || it.type === "oval") {
+    shapePath(it);
+    if (it.fill != null) { ctx.fillStyle = grey(it.fill); ctx.fill(); }
+    if (it.stroke) strokeWith(it.stroke);
+  } else if (it.type === "text") drawText(it);
+}
+
+/* Text as set: each word at its place, by the widths the font's own
+   tables give; drawn in the font itself, once the browser has it, and
+   till then in a family of the browser's, stretched or squeezed to the
+   word's width, as the screen fonts of 1985 stood in for the printer's.
+   Too small to read, a word is a grey bar, as PageMaker greeked it. */
+var measured = {}, measuredCount = 0;
+function drawText(it) {
+  var lines = set.lines[it.id], story = L.storyById(doc, it.story);
+  if (!lines || !story) return;
+  var f = L.fontInfo(story.font), size = story.size;
+  ctx.fillStyle = "#000";
+  if (size * view.scale < 4.5) {
+    ctx.fillStyle = "#9a9a9a";
+    lines.forEach(function (l) {
+      l.words.forEach(function (w) { ctx.fillRect(it.x + w.x, l.baseline - size * 0.45, w.width, size * 0.4); });
+    });
+    return;
+  }
+  /* The words are measured and drawn at the size they have on the
+     device, in its pixels, not at the size in points and then scaled:
+     a browser fits small type to the pixels, and a word measured at
+     one size and drawn at another comes out wider or narrower than
+     measured. The baseline and alignment are set here each time, since
+     the context is shared with the rulers. */
+  var dpr = window.devicePixelRatio || 1, k = dpr * view.scale, px = Math.round(size * k * 100) / 100;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = (f.style ? f.style + " " : "") + (f.weight ? f.weight + " " : "") + px + "px " + f.family;
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  var key = ctx.font;
+  if (measuredCount > 20000) { measured = {}; measuredCount = 0; }
+  lines.forEach(function (l) {
+    l.words.forEach(function (w) {
+      var text = w.codes.map(function (c) { return L.UNICODE[c] || "?"; }).join("");
+      var mk = key + "|" + text, m = measured[mk];
+      if (m === undefined) { m = measured[mk] = ctx.measureText(text).width; measuredCount++; }
+      if (!m) return;
+      ctx.setTransform(w.width * k / m, 0, 0, 1, dpr * view.ox + (it.x + w.x) * k, dpr * view.oy + l.baseline * k);
+      ctx.fillText(text, 0, 0);
+    });
+  });
+  ctx.restore();
+}
+
+function drawFrameOutline(it) {
+  if (!opts.showGuides || selected === it.id) return;
+  var lines = set.lines[it.id];
+  if (lines && lines.length) return;
+  ctx.save();
+  ctx.strokeStyle = css.line; ctx.lineWidth = hairline(); ctx.setLineDash([2 / view.scale, 2 / view.scale]);
+  ctx.strokeRect(it.x, it.y, it.w, it.h);
+  ctx.restore();
+}
+
+function handles(it) {
+  if (it.type === "line") return [{ x: it.x1, y: it.y1, h: "p1" }, { x: it.x2, y: it.y2, h: "p2" }];
+  var x0 = it.x, y0 = it.y, x1 = it.x + it.w, y1 = it.y + it.h, xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+  var hs = [{ x: x0, y: y0, h: "nw" }, { x: x1, y: y0, h: "ne" }, { x: x0, y: y1, h: "sw" }, { x: x1, y: y1, h: "se" }];
+  if (it.type !== "text") hs.push({ x: xm, y: y0, h: "n" }, { x: xm, y: y1, h: "s" }, { x: x0, y: ym, h: "w" }, { x: x1, y: ym, h: "e" });
+  return hs;
+}
+
+/* A text block's two windowshade tabs: the top one empty, or a plus if
+   the text comes from another block; the bottom one empty where the
+   story ends, a plus where it goes on to another block, and a red
+   triangle where there is more text than blocks for it. */
+function tabs(it) {
+  var story = L.storyById(doc, it.story), at = story.frames.indexOf(it.id);
+  var lastFrame = at === story.frames.length - 1;
+  return {
+    top: { x: it.x + it.w / 2, y: it.y, mark: at > 0 ? "plus" : "" },
+    bottom: { x: it.x + it.w / 2, y: it.y + it.h, mark: !lastFrame ? "plus" : (set.overflow[story.id] ? "more" : "") }
+  };
+}
+
+function drawSelection(it) {
+  var u = 1 / view.scale;
+  ctx.save();
+  ctx.lineWidth = u;
+  if (it.type === "text") {
+    ctx.strokeStyle = css.select;
+    hline(it.y, it.x, it.x + it.w); hline(it.y + it.h, it.x, it.x + it.w);
+    ctx.setLineDash([2 * u, 2 * u]); vline(it.x, it.y, it.y + it.h); vline(it.x + it.w, it.y, it.y + it.h); ctx.setLineDash([]);
+    var t = tabs(it);
+    [t.top, t.bottom].forEach(function (tab) {
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#000";
+      ctx.beginPath(); ctx.rect(tab.x - 7 * u, tab.y - 5 * u, 14 * u, 10 * u); ctx.fill(); ctx.stroke();
+      if (tab.mark === "plus") { hline(tab.y, tab.x - 4 * u, tab.x + 4 * u); vline(tab.x, tab.y - 3 * u, tab.y + 3 * u); }
+      if (tab.mark === "more") {
+        ctx.fillStyle = css.warn; ctx.beginPath();
+        ctx.moveTo(tab.x - 4.5 * u, tab.y - 2.5 * u); ctx.lineTo(tab.x + 4.5 * u, tab.y - 2.5 * u); ctx.lineTo(tab.x, tab.y + 3.5 * u);
+        ctx.closePath(); ctx.fill();
+      }
+    });
+  }
+  handles(it).forEach(function (h) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(h.x - 3 * u, h.y - 3 * u, 6 * u, 6 * u);
+    ctx.strokeStyle = "#fff"; ctx.strokeRect(h.x - 3 * u, h.y - 3 * u, 6 * u, 6 * u);
+  });
+  ctx.restore();
+}
+
+function drawRubber() {
+  var d = drag, u = 1 / view.scale;
+  ctx.save();
+  ctx.lineWidth = u; ctx.strokeStyle = "#000"; ctx.setLineDash([3 * u, 2 * u]);
+  var r = rubberItem(drag);
+  if (r.type === "line") { ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.stroke(); }
+  else { shapePath(r); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawGuideDrag() {
+  ctx.save();
+  ctx.strokeStyle = css.ruler; ctx.lineWidth = 1 / view.scale;
+  if (drag.axis === "x") vline(drag.value, -100000, 100000); else hline(drag.value, -100000, 100000);
+  ctx.restore();
+}
+
+/* The rulers, in the document's units, their nought at the page's top
+   left corner. */
+function drawRulers(cw, ch) {
+  ctx.save();
+  ctx.fillStyle = css.paper; ctx.fillRect(0, 0, cw, RULER); ctx.fillRect(0, 0, RULER, ch);
+  ctx.strokeStyle = css.ink; ctx.fillStyle = css.ink; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, RULER - .5); ctx.lineTo(cw, RULER - .5); ctx.moveTo(RULER - .5, 0); ctx.lineTo(RULER - .5, ch); ctx.stroke();
+  var unit = UNIT[opts.units], px = unit * view.scale;     /* screen pixels to a unit */
+  var steps = opts.units === "in" ? [1/16, 1/8, 1/4, 1/2, 1, 2, 4] : [1, 2, 5, 10, 20, 50, 100, 200];
+  var minor = steps.find(function (s) { return s * px >= 5; }) || steps[steps.length - 1];
+  var major = steps.find(function (s) { return s * px >= 50 && s >= minor * 2; }) || minor * 10;
+  ctx.font = "9px -apple-system, Helvetica, sans-serif"; ctx.textBaseline = "top";
+  ctx.save(); ctx.beginPath(); ctx.rect(RULER, 0, cw, RULER); ctx.clip();
+  var u0 = Math.floor((RULER - view.ox) / px / minor) * minor, u1 = (cw - view.ox) / px;
+  for (var u = u0; u <= u1; u += minor) {
+    var x = Math.round(view.ox + u * px) + .5, isMajor = Math.abs(u / major - Math.round(u / major)) < 1e-6;
+    ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, RULER - (isMajor ? 10 : 4)); ctx.stroke();
+    if (isMajor) ctx.fillText(fmt(u), x + 2, 2);
+  }
+  ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(0, RULER, RULER, ch); ctx.clip();
+  u0 = Math.floor((RULER - view.oy) / px / minor) * minor; u1 = (ch - view.oy) / px;
+  for (u = u0; u <= u1; u += minor) {
+    var y = Math.round(view.oy + u * px) + .5; isMajor = Math.abs(u / major - Math.round(u / major)) < 1e-6;
+    ctx.beginPath(); ctx.moveTo(RULER, y); ctx.lineTo(RULER - (isMajor ? 10 : 4), y); ctx.stroke();
+    if (isMajor) { ctx.save(); ctx.translate(2, y + 2); ctx.rotate(Math.PI / 2); ctx.fillText(fmt(u), 0, -9); ctx.restore(); }
+  }
+  ctx.restore();
+  ctx.fillStyle = css.paper; ctx.fillRect(0, 0, RULER - 1, RULER - 1);
+  ctx.fillStyle = css.muted; ctx.font = "9px -apple-system, Helvetica, sans-serif"; ctx.fillText(opts.units, 3, 6);
+  ctx.restore();
+  function fmt(v) { return String(Math.round(v * 1000) / 1000); }
+}
+
+function banner() {
+  var b = document.getElementById("banner"), text = "";
+  if (loaded) text = "Text to place: click in a column, or drag a block. Esc puts it back.";
+  b.textContent = text; b.style.display = text ? "block" : "none";
+}
+
+/* ---------- Snapping ---------- */
+
+function snapValue(v, axis) {
+  if (!opts.snap || !opts.showGuides) return { v: v, d: Infinity };
+  var g = L.guides(doc), list = axis === "x" ? g.x : g.y, tol = 6 / view.scale, best = { v: v, d: Infinity };
+  list.forEach(function (gv) { var d = Math.abs(gv - v); if (d < tol && d < best.d) best = { v: gv, d: d }; });
+  return best;
+}
+function snap(v, axis) { return snapValue(v, axis).v; }
+
+/* A box moved: by its nearer edge to a guide. */
+function snapBox(x, y, w, h) {
+  var a = snapValue(x, "x"), b = snapValue(x + w, "x");
+  if (a.d <= b.d && a.d < Infinity) x = a.v; else if (b.d < Infinity) x = b.v - w;
+  a = snapValue(y, "y"); b = snapValue(y + h, "y");
+  if (a.d <= b.d && a.d < Infinity) y = a.v; else if (b.d < Infinity) y = b.v - h;
+  return { x: x, y: y };
+}
+
+/* ---------- Hit testing ---------- */
+
+function near(p, x, y, r) { return Math.abs(p.x - x) <= r && Math.abs(p.y - y) <= r; }
+
+function hitItem(p) {
+  var tol = 4 / view.scale, items = pageItems();
+  for (var i = items.length - 1; i >= 0; i--) {
+    var it = items[i];
+    if (it.type === "line") {
+      if (segDist(p, it.x1, it.y1, it.x2, it.y2) <= tol + (it.stroke ? it.stroke.width / 2 : 0)) return it;
+      continue;
+    }
+    var x0 = Math.min(it.x, it.x + it.w), x1 = Math.max(it.x, it.x + it.w), y0 = Math.min(it.y, it.y + it.h), y1 = Math.max(it.y, it.y + it.h);
+    var inside = p.x >= x0 - tol && p.x <= x1 + tol && p.y >= y0 - tol && p.y <= y1 + tol;
+    if (!inside) continue;
+    if (it.type === "text" || it.fill != null) return it;
+    var edge = Math.min(p.x - x0, x1 - p.x, p.y - y0, y1 - p.y);
+    if (edge <= tol + (it.stroke ? it.stroke.width : 0)) return it;
+  }
+  return null;
+}
+
+function segDist(p, x1, y1, x2, y2) {
+  var dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy, t = l ? ((p.x - x1) * dx + (p.y - y1) * dy) / l : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (x1 + t * dx), p.y - (y1 + t * dy));
+}
+
+function hitGuide(p) {
+  var tol = 3 / view.scale;
+  for (var i = 0; i < doc.guides.x.length; i++) if (Math.abs(doc.guides.x[i] - p.x) <= tol) return { axis: "x", index: i };
+  for (i = 0; i < doc.guides.y.length; i++) if (Math.abs(doc.guides.y[i] - p.y) <= tol) return { axis: "y", index: i };
+  return null;
+}
+
+/* ---------- The mouse ---------- */
+
+var spaceDown = false;
+
+canvas.addEventListener("mousedown", function (e) {
+  if (e.button !== 0) return;
+  canvas.focus();
+  closeMenus();
+  var p = toPage(e);
+  if (spaceDown) { drag = { kind: "pan", sx: p.sx, sy: p.sy, ox: view.ox, oy: view.oy }; return; }
+
+  /* a ruler: a new guide */
+  if (p.sy < RULER || p.sx < RULER) {
+    if (p.sy < RULER && p.sx < RULER) return;
+    drag = { kind: "guide", axis: p.sy < RULER ? "y" : "x", index: -1, value: p.sy < RULER ? p.y : p.x, moved: false };
+    return;
+  }
+
+  if (loaded || tool !== "pointer") {
+    var start = { x: snap(p.x, "x"), y: snap(p.y, "y") };
+    drag = { kind: "create", tool: loaded ? "text" : tool, x0: start.x, y0: start.y, x1: start.x, y1: start.y, shift: e.shiftKey, moved: false };
+    return;
+  }
+
+  var it = selectedItem();
+  if (it && findItem(it.id).page === pageIndex) {
+    var r = 5 / view.scale;
+    if (it.type === "text") {
+      var t = tabs(it);
+      if (near(p, t.bottom.x, t.bottom.y, 7 / view.scale)) {
+        drag = { kind: "shade", item: it.id, y0: it.y + it.h, moved: false, mark: t.bottom.mark, start: p };
+        return;
+      }
+    }
+    var h = handles(it).find(function (h) { return near(p, h.x, h.y, r); });
+    if (h) { drag = { kind: "resize", item: it.id, handle: h.h, orig: JSON.parse(JSON.stringify(it)), start: p, moved: false }; return; }
+  }
+
+  var g = hitGuide(p), hit = hitItem(p);
+  if (g && !hit) {
+    drag = { kind: "guide", axis: g.axis, index: g.index, value: doc.guides[g.axis][g.index], moved: false };
+    return;
+  }
+  if (hit) {
+    if (selected !== hit.id) { selected = hit.id; buildPanel(); }
+    drag = { kind: "move", item: hit.id, orig: JSON.parse(JSON.stringify(hit)), start: p, moved: false };
+  } else if (g) {
+    drag = { kind: "guide", axis: g.axis, index: g.index, value: doc.guides[g.axis][g.index], moved: false };
+  } else {
+    if (selected) { selected = null; buildPanel(); }
+  }
+  draw();
+});
+
+window.addEventListener("mousemove", function (e) {
+  var p = toPage(e);
+  if (!drag) { cursorFor(p); return; }
+  if (drag.kind === "pan") { view.ox = drag.ox + p.sx - drag.sx; view.oy = drag.oy + p.sy - drag.sy; view.zoom = view.zoom === "fit" ? view.scale / PX : view.zoom; draw(); return; }
+  if (drag.kind === "guide") {
+    drag.value = drag.axis === "x" ? p.x : p.y; drag.moved = true;
+    drag.off = drag.axis === "x" ? p.sx < RULER : p.sy < RULER;
+    draw(); return;
+  }
+  if (drag.kind === "create") {
+    drag.x1 = snap(p.x, "x"); drag.y1 = snap(p.y, "y"); drag.shift = e.shiftKey;
+    if (Math.abs(p.x - drag.x0) * view.scale > 3 || Math.abs(p.y - drag.y0) * view.scale > 3) drag.moved = true;
+    draw(); return;
+  }
+  var it = findItem(drag.item) && findItem(drag.item).item;
+  if (!it) return;
+  var dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+  if (!drag.moved && Math.hypot(dx, dy) * view.scale < 3) return;
+  if (!drag.moved) { undoPoint(); drag.moved = true; }
+  var o = drag.orig;
+  if (drag.kind === "move") {
+    if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    if (it.type === "line") {
+      var a = snapValue(o.x1 + dx, "x"), b = snapValue(o.x2 + dx, "x");
+      if (a.d <= b.d && a.d < Infinity) dx = a.v - o.x1; else if (b.d < Infinity) dx = b.v - o.x2;
+      a = snapValue(o.y1 + dy, "y"); b = snapValue(o.y2 + dy, "y");
+      if (a.d <= b.d && a.d < Infinity) dy = a.v - o.y1; else if (b.d < Infinity) dy = b.v - o.y2;
+      it.x1 = o.x1 + dx; it.y1 = o.y1 + dy; it.x2 = o.x2 + dx; it.y2 = o.y2 + dy;
+    } else {
+      var s = snapBox(o.x + dx, o.y + dy, o.w, o.h);
+      it.x = s.x; it.y = s.y;
+    }
+  } else if (drag.kind === "resize") {
+    var x = snap(p.x, "x"), y = snap(p.y, "y"), hd = drag.handle;
+    if (it.type === "line") {
+      var ax = hd === "p1" ? o.x2 : o.x1, ay = hd === "p1" ? o.y2 : o.y1;
+      if (e.shiftKey || it.constrained) { var c = constrain(ax, ay, x, y); x = c.x; y = c.y; }
+      if (hd === "p1") { it.x1 = x; it.y1 = y; } else { it.x2 = x; it.y2 = y; }
+    } else {
+      var x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+      if (hd.indexOf("w") >= 0) x0 = x; if (hd.indexOf("e") >= 0) x1 = x;
+      if (hd.indexOf("n") >= 0) y0 = y; if (hd.indexOf("s") >= 0) y1 = y;
+      var min = 4;
+      if (x1 - x0 < min) { if (hd.indexOf("w") >= 0) x0 = x1 - min; else x1 = x0 + min; }
+      if (y1 - y0 < min) { if (hd.indexOf("n") >= 0) y0 = y1 - min; else y1 = y0 + min; }
+      if (e.shiftKey && it.type !== "text" && hd.length === 2) {
+        var side = Math.max(x1 - x0, y1 - y0);
+        if (hd.indexOf("w") >= 0) x0 = x1 - side; else x1 = x0 + side;
+        if (hd.indexOf("n") >= 0) y0 = y1 - side; else y1 = y0 + side;
+      }
+      it.x = x0; it.y = y0; it.w = x1 - x0; it.h = y1 - y0;
+    }
+  } else if (drag.kind === "shade") {
+    it.h = Math.max(snap(drag.y0 + dy, "y") - it.y, 6);
+  }
+  changed();
+});
+
+window.addEventListener("mouseup", function (e) {
+  if (!drag) return;
+  var d = drag; drag = null;
+  if (d.kind === "guide") {
+    if (!d.moved) { draw(); return; }
+    change(null, function () {
+      var list = doc.guides[d.axis];
+      if (d.index >= 0) list.splice(d.index, 1);
+      if (!d.off) list.push(Math.round(d.value * 100) / 100);
+    });
+    return;
+  }
+  if (d.kind === "create") { createFromDrag(d); return; }
+  if (d.kind === "shade" && !d.moved && d.mark === "more") {
+    var it = findItem(d.item).item;
+    loaded = { story: it.story, after: it.id };
+    setTool("pointer"); draw();
+    return;
+  }
+  if (d.moved) { lastUndoTag = null; refreshPanel(); }
+  draw();
+});
+
+function undoPoint() { undoStack.push(JSON.stringify(doc)); redoStack = []; lastUndoTag = null; }
+
+function constrain(x0, y0, x, y) {
+  var dx = x - x0, dy = y - y0, a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
+  if (Math.abs(Math.cos(a)) < 1e-9) return { x: x0, y: y };
+  if (Math.abs(Math.sin(a)) < 1e-9) return { x: x, y: y0 };
+  len = Math.max(Math.abs(dx), Math.abs(dy));
+  return { x: x0 + Math.sign(Math.cos(a)) * len, y: y0 + Math.sign(Math.sin(a)) * len };
+}
+
+function rubberItem(d) {
+  var t = d.tool;
+  if (t === "line" || t === "hline") {
+    var e = (t === "hline" || d.shift) ? constrain(d.x0, d.y0, d.x1, d.y1) : { x: d.x1, y: d.y1 };
+    return { type: "line", x1: d.x0, y1: d.y0, x2: e.x, y2: e.y };
+  }
+  var x0 = Math.min(d.x0, d.x1), y0 = Math.min(d.y0, d.y1), w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0);
+  if (d.shift && t !== "text") { var s = Math.max(w, h); w = h = s; if (d.x1 < d.x0) x0 = d.x0 - s; if (d.y1 < d.y0) y0 = d.y0 - s; }
+  return { type: t === "text" ? "text" : t === "oval" ? "oval" : "rect", x: x0, y: y0, w: w, h: h, radius: t === "round" ? 12 : 0 };
+}
+
+function createFromDrag(d) {
+  var r = rubberItem(d), stroke = { width: 1, grey: 0, dash: false };
+  if (r.type === "text") {
+    if (!d.moved) {
+      /* a click: a block the width of the column, down to the margin */
+      var col = L.columns(doc).find(function (c) { return d.x0 >= c.x - 1 && d.x0 <= c.x + c.w + 1; });
+      var bottom = doc.page.height - doc.margins.bottom;
+      if (col && d.y0 < bottom - 12) { r.x = col.x; r.w = col.w; r.y = d.y0; r.h = bottom - d.y0; }
+      else { r.x = d.x0; r.y = d.y0; r.w = 180; r.h = 72; }
+    }
+    if (r.w < 12 || r.h < 6) { draw(); return; }
+    change(null, function () {
+      var item = { id: newId("i"), type: "text", x: r.x, y: r.y, w: r.w, h: r.h, story: null };
+      if (loaded) {
+        var story = L.storyById(doc, loaded.story);
+        item.story = story.id;
+        story.frames.splice(story.frames.indexOf(loaded.after) + 1, 0, item.id);
+      } else {
+        var s = { id: newId("s"), text: "", frames: [item.id] };
+        for (var k in defaults) s[k] = defaults[k];
+        if (!L.fontsAvailable().some(function (f) { return f.name === s.font; }) && L.fontsAvailable().length)
+          s.font = L.fontsAvailable()[0].name;
+        doc.stories.push(s);
+        item.story = s.id;
+      }
+      pageItems().push(item);
+      selected = item.id;
+    });
+    var wasLoaded = loaded;
+    loaded = null;
+    setTool("pointer");
+    buildPanel();
+    if (!wasLoaded) { var ta = document.getElementById("story"); if (ta) ta.focus(); }
+    draw();
+    return;
+  }
+  if (!d.moved) { draw(); return; }
+  change(null, function () {
+    var item;
+    if (r.type === "line") item = { id: newId("i"), type: "line", x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2, stroke: stroke, constrained: d.tool === "hline" };
+    else item = { id: newId("i"), type: r.type, x: r.x, y: r.y, w: r.w, h: r.h, stroke: stroke, fill: null };
+    if (r.type === "rect") item.radius = r.radius;
+    pageItems().push(item);
+    selected = item.id;
+  });
+  setTool("pointer");
+  buildPanel();
+}
+
+function cursorFor(p) {
+  var c = "default";
+  if (spaceDown) c = "grab";
+  else if (p.sy < RULER || p.sx < RULER) c = p.sy < RULER ? "row-resize" : "col-resize";
+  else if (loaded) c = "copy";
+  else if (tool === "text") c = "text";
+  else if (tool !== "pointer") c = "crosshair";
+  else {
+    var it = selectedItem();
+    if (it && findItem(it.id).page === pageIndex) {
+      if (it.type === "text") { var t = tabs(it); if (near(p, t.bottom.x, t.bottom.y, 7 / view.scale)) c = t.bottom.mark === "more" ? "pointer" : "ns-resize"; }
+      var h = handles(it).find(function (h) { return near(p, h.x, h.y, 5 / view.scale); });
+      if (h) c = it.type === "line" ? "move" : ({ nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize", n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize" })[h.h];
+    }
+    if (c === "default") {
+      if (hitItem(p)) c = "move";
+      else { var g = hitGuide(p); if (g) c = g.axis === "x" ? "col-resize" : "row-resize"; }
+    }
+  }
+  canvas.style.cursor = c;
+}
+
+canvas.addEventListener("wheel", function (e) {
+  e.preventDefault();
+  var p = toPage(e);
+  if (e.ctrlKey || e.metaKey) {
+    var z = Math.min(8, Math.max(0.1, (view.scale / PX) * Math.exp(-e.deltaY * 0.01)));
+    setZoom(Math.round(z * 100) / 100, p.sx, p.sy);
+  } else {
+    view.ox -= e.deltaX; view.oy -= e.deltaY;
+    if (view.zoom === "fit") { view.zoom = view.scale / PX; document.getElementById("zoom").value = ""; }
+    draw();
+  }
+}, { passive: false });
+
+/* ---------- The keyboard ---------- */
+
+function typing() {
+  var a = document.activeElement;
+  return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT");
+}
+
+window.addEventListener("keydown", function (e) {
+  var cmd = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+  if (cmd && k === "s") { e.preventDefault(); run("save"); return; }
+  if (cmd && k === "o") { e.preventDefault(); run("open"); return; }
+  if (cmd && k === "e") { e.preventDefault(); run("exportps"); return; }
+  if (cmd && k === "0") { e.preventDefault(); run("fit"); return; }
+  if (cmd && k === "1") { e.preventDefault(); run("zoom100"); return; }
+  if (cmd && k === "2") { e.preventDefault(); run("zoom200"); return; }
+  if (typing()) { if (e.key === "Escape") document.activeElement.blur(); return; }
+  if (cmd && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (cmd && k === "y") { e.preventDefault(); redo(); return; }
+  if (cmd && ["c", "x", "v", "d", "f", "b"].indexOf(k) >= 0) {
+    e.preventDefault(); run({ c: "copy", x: "cut", v: "paste", d: "duplicate", f: "front", b: "back" }[k]); return;
+  }
+  if (cmd) return;
+  if (e.key === "Escape") { loaded = null; setTool("pointer"); draw(); return; }
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); run("delete"); return; }
+  if (e.key === " ") { spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
+  if (e.key.startsWith("Arrow")) {
+    var it = selectedItem(); if (!it) return;
+    e.preventDefault();
+    var step = e.shiftKey ? 10 : 1, dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0,
+        dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+    change("nudge", function () { moveItem(it, dx, dy); });
+    return;
+  }
+  var tools = { v: "pointer", t: "text", l: "line", h: "hline", b: "rect", r: "round", o: "oval" };
+  if (tools[k]) setTool(tools[k]);
+  if (e.key === "PageDown") goPage(pageIndex + 1);
+  if (e.key === "PageUp") goPage(pageIndex - 1);
+});
+window.addEventListener("keyup", function (e) { if (e.key === " ") { spaceDown = false; canvas.style.cursor = "default"; } });
+
+function moveItem(it, dx, dy) {
+  if (it.type === "line") { it.x1 += dx; it.x2 += dx; it.y1 += dy; it.y2 += dy; }
+  else { it.x += dx; it.y += dy; }
+}
+
+/* ---------- Tools ---------- */
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll("#toolbox button").forEach(function (b) { b.classList.toggle("on", b.dataset.tool === t); });
+  draw();
+}
+document.querySelectorAll("#toolbox button").forEach(function (b) {
+  b.addEventListener("click", function () { loaded = null; setTool(b.dataset.tool); canvas.focus(); });
+});
+
+/* ---------- Commands ---------- */
+
+function removeItem(id) {
+  var f = findItem(id); if (!f) return;
+  doc.pages[f.page].items.splice(f.index, 1);
+  if (f.item.type === "text") {
+    var s = L.storyById(doc, f.item.story);
+    if (s) {
+      s.frames = s.frames.filter(function (x) { return x !== id; });
+      if (!s.frames.length) doc.stories = doc.stories.filter(function (x) { return x !== s; });
+    }
+  }
+}
+
+/* A copy of an item, onto this page: a text block with a story of its
+   own, holding the text of the whole story it came from. */
+function pasteItem(data, dx) {
+  var it = JSON.parse(JSON.stringify(data.item));
+  it.id = newId("i");
+  moveItem(it, dx, dx);
+  if (it.type === "text") {
+    var s = JSON.parse(JSON.stringify(data.story));
+    s.id = newId("s"); s.frames = [it.id]; it.story = s.id;
+    doc.stories.push(s);
+  }
+  pageItems().push(it);
+  selected = it.id;
+}
+
+function copyData(it) {
+  return { item: JSON.parse(JSON.stringify(it)), story: it.type === "text" ? JSON.parse(JSON.stringify(L.storyById(doc, it.story))) : null };
+}
+
+function download(name, blob) {
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+function baseName() { return (doc.title || "untitled").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "untitled"; }
+
+
+/* PostScript is bytes: our strings carry each character as one, in the
+   encoding, so the text is written out as Latin-1, byte for character. */
+function latin1Blob(text, type) {
+  var bytes = new Uint8Array(text.length);
+  for (var i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xFF;
+  return new Blob([bytes], { type: type });
+}
+
+function run(cmd) {
+  closeMenus();
+  var it = selectedItem();
+  switch (cmd) {
+  case "new":
+    if (!confirm("Start a new document? This one is not kept unless you have saved it.")) return;
+    change(null, function () { var d = L.newDocument(); d.title = "Untitled"; load(d); pageIndex = 0; });
+    buildPanel(); setZoom("fit"); break;
+  case "open": document.getElementById("openfile").click(); break;
+  case "save": download(baseName() + ".json", new Blob([JSON.stringify(doc, null, 1)], { type: "application/json" })); message("Saved as a download: " + baseName() + ".json"); break;
+  case "exportps": exportPS(); break;
+  case "exportpdf": exportPDF(); break;
+  case "addfonts": document.getElementById("fontfile").click(); break;
+  case "addfontfolder": document.getElementById("fontfolder").click(); break;
+  case "forgetfonts": forgetFonts(); break;
+  case "showps": showPostScript(); break;
+  case "pagesetup": pageSetup(); break;
+  case "undo": undo(); break;
+  case "redo": redo(); break;
+  case "copy": if (it) { clipboard = copyData(it); message("Copied"); } break;
+  case "cut": if (it) { clipboard = copyData(it); change(null, function () { removeItem(it.id); selected = null; }); buildPanel(); } break;
+  case "paste": if (clipboard) { change(null, function () { pasteItem(clipboard, 0); }); buildPanel(); } break;
+  case "duplicate": if (it) { var data = copyData(it); change(null, function () { pasteItem(data, 12); }); buildPanel(); } break;
+  case "delete": if (it) { change(null, function () { removeItem(it.id); selected = null; }); buildPanel(); } break;
+  case "front": if (it) change(null, function () { var f = findItem(it.id); var a = doc.pages[f.page].items; a.splice(f.index, 1); a.push(it); }); break;
+  case "back": if (it) change(null, function () { var f = findItem(it.id); var a = doc.pages[f.page].items; a.splice(f.index, 1); a.unshift(it); }); break;
+  case "insertpage": change(null, function () { doc.pages.splice(pageIndex + 1, 0, { items: [] }); pageIndex++; selected = null; }); buildPanel(); break;
+  case "removepage":
+    if (doc.pages.length < 2) { message("A document keeps one page at least"); return; }
+    if (pageItems().length && !confirm("Remove page " + (pageIndex + 1) + " and everything on it?")) return;
+    change(null, function () {
+      pageItems().slice().forEach(function (x) { removeItem(x.id); });
+      doc.pages.splice(pageIndex, 1); pageIndex = Math.min(pageIndex, doc.pages.length - 1); selected = null;
+    });
+    buildPanel(); break;
+  case "guides": opts.showGuides = !opts.showGuides; saveOpts(); draw(); break;
+  case "snap": opts.snap = !opts.snap; saveOpts(); break;
+  case "clearguides": change(null, function () { doc.guides = { x: [], y: [] }; }); break;
+  case "fit": setZoom("fit"); break;
+  case "zoom50": setZoom(0.5); break;
+  case "zoom75": setZoom(0.75); break;
+  case "zoom100": setZoom(1); break;
+  case "zoom200": setZoom(2); break;
+  case "zoom400": setZoom(4); break;
+  }
+}
+
+document.getElementById("openfile").addEventListener("change", function (e) {
+  var f = e.target.files[0]; if (!f) return;
+  f.text().then(function (text) {
+    try {
+      var d = JSON.parse(text);
+      if (!d.pages || !d.stories || !d.page) throw new Error("not a Galley document");
+      change(null, function () { pageIndex = 0; load(d); });
+      buildPanel(); setZoom("fit"); message("Opened " + f.name);
+    } catch (err) { alert("Could not open " + f.name + ": " + err.message); }
+  });
+  e.target.value = "";
+});
+
+/* ---------- Examples ---------- */
+
+/* An example, by its name: index.html?example=gazette, or File, the
+   example's title. Served, as by GitHub Pages, its JSON is fetched;
+   opened as a file, the page may not fetch, but it may run the
+   example's script, examples/name.js (tools/pack-examples.js). */
+var exampleLoads = {};
+window.GALLEY_EXAMPLE_LOADED = function (v) { exampleLoads[v.name] = v.doc; };
+
+function getExample(name) {
+  if (!/^[a-z0-9-]+$/.test(name)) return Promise.reject(new Error("no example called " + name));
+  if (exampleLoads[name]) return Promise.resolve(exampleLoads[name]);
+  var viaScript = function () {
+    return loadScript("examples/" + name + ".js").then(function () {
+      if (!exampleLoads[name]) throw new Error("no example called " + name);
+      return exampleLoads[name];
+    });
+  };
+  if (location.protocol === "file:" || typeof fetch === "undefined") return viaScript();
+  return fetch("examples/" + name + ".json").then(function (r) {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }).catch(viaScript);
+}
+
+function openExample(name, ask) {
+  if (ask && !confirm("Open the example? This document is not kept unless you have saved it.")) return;
+  getExample(name).then(function (d) {
+    change(null, function () { pageIndex = 0; load(JSON.parse(JSON.stringify(d))); });
+    pagesBar(); buildPanel(); setZoom("fit");
+    message("Opened the example " + (d.title || name));
+  }).catch(function (err) { message("No example: " + err.message); });
+}
+
+(function () {
+  var box = document.getElementById("examplemenu"), list = window.GALLEY_EXAMPLES || [];
+  if (!list.length) return;
+  box.innerHTML = "<hr>";
+  list.forEach(function (e) {
+    var b = document.createElement("button");
+    b.textContent = "Example: " + e.title;
+    b.addEventListener("click", function () { closeMenus(); openExample(e.name, true); });
+    box.appendChild(b);
+  });
+})();
+
+function message(text) { document.getElementById("message").textContent = text; }
+function saveOpts() { store("galley.opts", JSON.stringify({ snap: opts.snap, showGuides: opts.showGuides, units: opts.units })); }
+
+/* ---------- Menus ---------- */
+
+function closeMenus() { document.querySelectorAll(".menu.open").forEach(function (m) { m.classList.remove("open"); }); }
+document.querySelectorAll(".menu").forEach(function (m) {
+  m.querySelector(":scope > button").addEventListener("mousedown", function (e) {
+    e.preventDefault();
+    var was = m.classList.contains("open");
+    closeMenus();
+    if (!was) { refreshMenus(); m.classList.add("open"); }
+  });
+  m.addEventListener("mouseenter", function () {
+    if (document.querySelector(".menu.open") && !m.classList.contains("open")) { closeMenus(); refreshMenus(); m.classList.add("open"); }
+  });
+});
+document.querySelectorAll(".items button").forEach(function (b) {
+  b.addEventListener("click", function () { run(b.dataset.cmd); });
+});
+document.addEventListener("mousedown", function (e) { if (!e.target.closest(".menu")) closeMenus(); });
+
+function refreshMenus() {
+  var it = selectedItem();
+  document.querySelectorAll(".items button").forEach(function (b) {
+    var c = b.dataset.cmd;
+    if (["cut", "copy", "duplicate", "delete", "front", "back"].indexOf(c) >= 0) b.disabled = !it;
+    if (c === "paste") b.disabled = !clipboard;
+    if (c === "undo") b.disabled = !undoStack.length;
+    if (c === "redo") b.disabled = !redoStack.length;
+    if (c === "removepage") b.disabled = doc.pages.length < 2;
+    var check = b.dataset.check;
+    if (check) b.classList.toggle("checked", !!opts[check]);
+  });
+}
+
+/* ---------- Pages ---------- */
+
+function pagesBar() {
+  var bar = document.getElementById("pages");
+  var html = "";
+  doc.pages.forEach(function (p, i) { html += '<button data-page="' + i + '" class="' + (i === pageIndex ? "on" : "") + '">' + (i + 1) + "</button>"; });
+  html += '<button data-page="add" title="Insert a page after this one">+</button>';
+  bar.innerHTML = html;
+}
+document.getElementById("pages").addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.page === "add") run("insertpage"); else goPage(+b.dataset.page);
+});
+function goPage(i) {
+  if (i < 0 || i >= doc.pages.length || i === pageIndex) return;
+  pageIndex = i;
+  if (selected && findItem(selected).page !== i) { selected = null; buildPanel(); }
+  pagesBar(); draw(); refreshPanel();
+}
+
+document.getElementById("zoom").addEventListener("change", function (e) {
+  setZoom(e.target.value === "fit" ? "fit" : +e.target.value); canvas.focus();
+});
+
+/* ---------- Page setup ---------- */
+
+function pageSetup() {
+  var dlg = document.getElementById("setup"), $ = function (id) { return document.getElementById(id); };
+  var units = opts.units;
+  function show() {
+    var u = UNIT[units], r = function (v) { return +(v / u).toFixed(units === "pt" ? 1 : 2); };
+    $("su-units").value = units;
+    $("su-w").value = r(doc.page.width); $("su-h").value = r(doc.page.height);
+    $("su-mt").value = r(doc.margins.top); $("su-mb").value = r(doc.margins.bottom);
+    $("su-ml").value = r(doc.margins.left); $("su-mr").value = r(doc.margins.right);
+    $("su-cols").value = doc.columns.count; $("su-gut").value = r(doc.columns.gutter);
+    var key = doc.page.width.toFixed(2).replace(/\.?0+$/, "") + "x" + doc.page.height.toFixed(2).replace(/\.?0+$/, "");
+    var opt = Array.prototype.find.call($("su-size").options, function (o) { return o.value === key; });
+    $("su-size").value = opt ? key : "custom";
+  }
+  show();
+  $("su-size").onchange = function () {
+    var v = $("su-size").value; if (v === "custom") return;
+    var wh = v.split("x"), u = UNIT[$("su-units").value];
+    $("su-w").value = +(wh[0] / u).toFixed(2); $("su-h").value = +(wh[1] / u).toFixed(2);
+  };
+  $("su-units").onchange = function () {
+    var from = UNIT[units], to = UNIT[$("su-units").value];
+    ["su-w", "su-h", "su-mt", "su-mb", "su-ml", "su-mr", "su-gut"].forEach(function (id) { $(id).value = +($(id).value * from / to).toFixed(2); });
+    units = $("su-units").value;
+  };
+  dlg.onclose = function () {
+    if (dlg.returnValue !== "ok") return;
+    var u = UNIT[units], n = function (id) { return Math.max(0, parseFloat($(id).value) || 0) * u; };
+    opts.units = units; saveOpts();
+    change(null, function () {
+      doc.page.width = Math.max(n("su-w"), 36); doc.page.height = Math.max(n("su-h"), 36);
+      doc.margins = { top: n("su-mt"), bottom: n("su-mb"), left: n("su-ml"), right: n("su-mr") };
+      doc.columns = { count: Math.max(1, Math.min(12, parseInt($("su-cols").value, 10) || 1)), gutter: n("su-gut") };
+    });
+    buildPanel(); setZoom("fit");
+  };
+  dlg.returnValue = "";
+  dlg.showModal();
+}
+
+/* ---------- The panel ---------- */
+
+var SHADES = [["None", null], ["Paper", 1], ["10%", 0.9], ["20%", 0.8], ["30%", 0.7], ["40%", 0.6], ["60%", 0.4], ["80%", 0.2], ["Solid", 0]];
+var WEIGHTS = [["None", 0], ["Hairline", 0.25], ["½ pt", 0.5], ["1 pt", 1], ["2 pt", 2], ["4 pt", 4], ["6 pt", 6], ["8 pt", 8], ["12 pt", 12]];
+var panelFor = null;
+
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+function options(list, value) {
+  return list.map(function (o) { return '<option value="' + esc(JSON.stringify(o[1])) + '"' + (JSON.stringify(o[1]) === JSON.stringify(value) ? " selected" : "") + ">" + o[0] + "</option>"; }).join("");
+}
+function num(id, label, value, step) { return '<label>' + label + ' <input type="number" id="' + id + '" step="' + (step || "any") + '" value="' + value + '"></label>'; }
+
+function buildPanel() {
+  var it = selectedItem(), h = "";
+  panelFor = it ? it.id : null;
+  if (!it) {
+    h += "<h3>Document</h3>";
+    h += '<label>Title <input type="text" id="doc-title" value="' + esc(doc.title || "") + '"></label>';
+    h += '<div class="note">' + doc.pages.length + " page" + (doc.pages.length > 1 ? "s" : "") + ", " +
+         fmtUnit(doc.page.width) + " × " + fmtUnit(doc.page.height) + " " + opts.units + ", " +
+         doc.columns.count + " column" + (doc.columns.count > 1 ? "s" : "") + '</div>';
+    h += '<div class="row"><button class="btn" data-cmd="pagesetup">Page setup…</button></div>';
+    h += "<h3>New text</h3>" + typeControls(defaults, "d-");
+    h += "<h3>How to</h3>";
+    h += '<div class="note">Text tool: click in a column for a block the column\'s width, down to the bottom margin, or drag a block. ' +
+         "Type in the story at the right. Where the text runs over, the block's bottom tab is red: click it, then click or drag where the rest goes. " +
+         "Drag from a ruler for a guide; drag it back to remove it. Space and drag to move about; ⌘ and the wheel to zoom.</div>";
+  } else if (it.type === "text") {
+    var s = L.storyById(doc, it.story), at = s.frames.indexOf(it.id) + 1;
+    h += "<h3>Story</h3>";
+    h += '<textarea id="story" spellcheck="true">' + esc(s.text) + "</textarea>";
+    h += '<div class="note" id="thread"></div>';
+    h += '<div class="row"><button class="btn" id="place">Place the rest…</button>' + (s.frames.length > 1 ? '<button class="btn" id="unthread">Unthread this block</button>' : "") + "</div>";
+    h += "<h3>Type specs</h3>" + typeControls(s, "t-");
+    h += "<h3>Block</h3>" + xywh(it);
+  } else if (it.type === "line") {
+    h += "<h3>Line</h3>" + strokeControls(it);
+    h += '<h3>Ends</h3><div class="xywh">' + coord("x1", it.x1) + coord("y1", it.y1) + coord("x2", it.x2) + coord("y2", it.y2) + "</div>";
+  } else {
+    h += "<h3>" + (it.type === "oval" ? "Oval" : "Box") + "</h3>" + strokeControls(it);
+    h += '<label>Fill <select id="fill">' + options(SHADES, it.fill) + "</select></label>";
+    if (it.type === "rect") h += num("radius", "Corners", toUnit(it.radius || 0));
+    h += "<h3>Place</h3>" + xywh(it);
+  }
+  panel.innerHTML = h;
+  wirePanel();
+  refreshPanel();
+}
+
+function fmtUnit(v) { return toUnit(v); }
+function coord(k, v) { return '<label>' + k.toUpperCase() + ' <input type="number" step="any" data-geo="' + k + '" value="' + toUnit(v) + '"></label>'; }
+function xywh(it) { return '<div class="xywh">' + coord("x", it.x) + coord("y", it.y) + coord("w", it.w) + coord("h", it.h) + '</div><div class="note">in ' + opts.units + ", from the page's top left corner</div>"; }
+
+function typeControls(s, p) {
+  var fonts = L.fontsAvailable(), h = "";
+  if (!fonts.length) h += '<div class="note warn">No widths: run make widths, then reload.</div>';
+  h += '<label>Font <select id="' + p + 'font">' + fonts.map(function (f) { return '<option' + (f.name === s.font ? " selected" : "") + ">" + f.name + "</option>"; }).join("") + "</select></label>";
+  h += num(p + "size", "Size, pt", s.size, 0.5);
+  h += '<label>Leading, pt <input type="number" id="' + p + 'leading" step="0.5" min="1" placeholder="auto, ' + +(s.size * 1.2).toFixed(1) + '" value="' + (s.leading || "") + '"></label>';
+  h += '<label>Alignment <div class="seg" id="' + p + 'align">' + [["left", "Left"], ["center", "Centre"], ["right", "Right"], ["justify", "Justify"]]
+        .map(function (a) { return '<button data-align="' + a[0] + '" class="' + (s.align === a[0] ? "on" : "") + '">' + a[1] + "</button>"; }).join("") + "</div></label>";
+  h += num(p + "indent", "First indent", s.indent || 0, 0.5) + num(p + "space", "Space after", s.spaceAfter || 0, 0.5);
+  return h + '<div class="note">Indent and space after in points.</div>';
+}
+
+function strokeControls(it) {
+  var w = it.stroke ? it.stroke.width : 0;
+  return '<label>Weight <select id="weight">' + options(WEIGHTS, w) + "</select></label>" +
+    '<label>Shade <select id="sgrey">' + options(SHADES.slice(1), it.stroke ? it.stroke.grey : 0) + "</select></label>" +
+    '<label>Dashed <input type="checkbox" id="dash"' + (it.stroke && it.stroke.dash ? " checked" : "") + "></label>";
+}
+
+function wirePanel() {
+  var $ = function (id) { return document.getElementById(id); };
+  panel.querySelectorAll("[data-cmd]").forEach(function (b) { b.onclick = function () { run(b.dataset.cmd); }; });
+  var it = selectedItem();
+  if (!it) {
+    $("doc-title").oninput = function () { change("title", function () { doc.title = $("doc-title").value; }); };
+    wireType(defaults, "d-", false);
+    return;
+  }
+  panel.querySelectorAll("[data-geo]").forEach(function (inp) {
+    inp.onchange = function () {
+      var v = parseFloat(inp.value); if (isNaN(v)) return;
+      change(null, function () {
+        var k = inp.dataset.geo, pt = fromUnit(v);
+        if ((k === "w" || k === "h") && pt < 1) pt = 1;
+        it[k] = pt;
+      });
+    };
+  });
+  if (it.type === "text") {
+    var s = L.storyById(doc, it.story);
+    $("story").oninput = function () { change("text:" + s.id, function () { s.text = $("story").value; }); };
+    $("place").onclick = function () { loaded = { story: s.id, after: s.frames[s.frames.length - 1] }; setTool("pointer"); canvas.focus(); draw(); };
+    if ($("unthread")) $("unthread").onclick = function () {
+      change(null, function () {
+        s.frames = s.frames.filter(function (x) { return x !== it.id; });
+        var n = { id: newId("s"), text: "", frames: [it.id] };
+        ["font", "size", "leading", "align", "indent", "spaceAfter"].forEach(function (k) { n[k] = s[k]; });
+        doc.stories.push(n); it.story = n.id;
+      });
+      buildPanel();
+    };
+    wireType(s, "t-", true);
+  } else {
+    $("weight").onchange = function () {
+      var w = JSON.parse($("weight").value);
+      change(null, function () { it.stroke = w ? { width: w, grey: it.stroke ? it.stroke.grey : 0, dash: it.stroke ? it.stroke.dash : false } : null; });
+    };
+    $("sgrey").onchange = function () { change(null, function () { if (!it.stroke) it.stroke = { width: 1, grey: 0, dash: false }; it.stroke.grey = JSON.parse($("sgrey").value); }); refreshPanel(true); };
+    $("dash").onchange = function () { change(null, function () { if (!it.stroke) it.stroke = { width: 1, grey: 0, dash: false }; it.stroke.dash = $("dash").checked; }); refreshPanel(true); };
+    if ($("fill")) $("fill").onchange = function () { change(null, function () { it.fill = JSON.parse($("fill").value); }); };
+    if ($("radius")) $("radius").onchange = function () { var v = parseFloat($("radius").value); if (!isNaN(v)) change(null, function () { it.radius = Math.max(0, fromUnit(v)); }); };
+  }
+}
+
+/* Type specs: of a story, as a change to the document; or the
+   defaults, for the next block. */
+function wireType(target, p, isStory) {
+  var $ = function (id) { return document.getElementById(id); };
+  function apply(fn) {
+    if (isStory) change(null, fn); else { fn(); store("galley.defaults", JSON.stringify(defaults)); }
+  }
+  $(p + "font").onchange = function () { apply(function () { target.font = $(p + "font").value; }); if (isStory) copyToDefaults(target); };
+  $(p + "size").onchange = function () { var v = parseFloat($(p + "size").value); if (v > 0) apply(function () { target.size = Math.min(v, 1000); }); if (isStory) copyToDefaults(target); refreshLeadingHint(p, target); };
+  $(p + "leading").onchange = function () { var v = parseFloat($(p + "leading").value); apply(function () { target.leading = v > 0 ? v : null; }); if (isStory) copyToDefaults(target); };
+  $(p + "indent").onchange = function () { var v = parseFloat($(p + "indent").value) || 0; apply(function () { target.indent = v; }); };
+  $(p + "space").onchange = function () { var v = parseFloat($(p + "space").value) || 0; apply(function () { target.spaceAfter = Math.max(0, v); }); };
+  $(p + "align").querySelectorAll("button").forEach(function (b) {
+    b.onclick = function () {
+      apply(function () { target.align = b.dataset.align; });
+      $(p + "align").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      if (isStory) copyToDefaults(target);
+    };
+  });
+}
+function refreshLeadingHint(p, s) { var el = document.getElementById(p + "leading"); if (el) el.placeholder = "auto, " + +(s.size * 1.2).toFixed(1); }
+function copyToDefaults(s) {
+  ["font", "size", "leading", "align"].forEach(function (k) { defaults[k] = s[k]; });
+  store("galley.defaults", JSON.stringify(defaults));
+}
+
+/* The panel's values, as the document has them now: after a drag, an
+   undo, or a change elsewhere; but not the field being typed in. */
+function refreshPanel() {
+  var it = selectedItem();
+  if ((it ? it.id : null) !== panelFor) { buildPanel(); return; }
+  if (!it) return;
+  var focus = document.activeElement;
+  panel.querySelectorAll("[data-geo]").forEach(function (inp) { if (inp !== focus) inp.value = toUnit(it[inp.dataset.geo]); });
+  if (it.type === "text") {
+    var s = L.storyById(doc, it.story), at = s.frames.indexOf(it.id) + 1, t = document.getElementById("thread");
+    var ta = document.getElementById("story");
+    if (ta && ta !== focus && ta.value !== s.text) ta.value = s.text;
+    var setLines = (set.lines[it.id] || []).length, more = set.overflow[s.id];
+    t.innerHTML = "Block " + at + " of " + s.frames.length + ", " + setLines + " line" + (setLines === 1 ? "" : "s") + ". " +
+      (more ? '<span class="warn">More text than room for it: place the rest.</span>' : (at < s.frames.length ? "The story goes on in the next block." : "The story ends here."));
+    document.getElementById("place").disabled = !more;
+  }
+}
+
+/* ---------- Writing the pages: PostScript and PDF ---------- */
+
+function exportPS() {
+  withFonts().then(function () {
+    download(baseName() + ".ps", latin1Blob(postScript(), "application/postscript"));
+    message("Exported " + baseName() + ".ps");
+  }).catch(function (err) { message("Not exported: " + err.message); });
+}
+
+/* The PDF, written here (pdf.js): each font goes in as its TrueType
+   file, compressed where the browser can (CompressionStream), as PDF's
+   FlateDecode reads it. */
+function exportPDF() {
+  message("Writing the PDF…");
+  withFonts().then(function (fonts) {
+    return Promise.all(fonts.map(function (f) {
+      return deflate(f.ttf).then(function (d) { f.deflated = d; });
+    }));
+  }).then(function () {
+    var bytes = GalleyPDF.toPDF(doc, doc.title || "Untitled", function (name) { return fontData[name] || null; });
+    download(baseName() + ".pdf", new Blob([bytes], { type: "application/pdf" }));
+    message("Exported " + baseName() + ".pdf");
+  }).catch(function (err) { message("No PDF: " + err.message); });
+}
+
+function deflate(bytes) {
+  if (typeof CompressionStream === "undefined") return Promise.resolve(null);
+  try {
+    var s = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate"));
+    return new Response(s).arrayBuffer().then(function (b) { return new Uint8Array(b); }, function () { return null; });
+  } catch (e) { return Promise.resolve(null); }
+}
+
+/* The PostScript, shown: each font sent with it is shown as a line
+   that says so, not as its program, which is long and not to be read. */
+function showPostScript() {
+  var text = L.toPostScript(doc, doc.title || "Untitled", function (name) {
+    return "% the program of " + name + ", a Type 42 font, made from its TrueType file when the page is exported\n";
+  });
+  document.getElementById("ps-text").textContent = text;
+  document.getElementById("showps").showModal();
+}
+
+/* The PostScript, with each font's program, a Type 42 font made from
+   its TrueType file (truetype.js), once, when it is first wanted. */
+function postScript() {
+  return L.toPostScript(doc, doc.title || "Untitled", function (name) {
+    var f = fontData[name];
+    if (!f) return null;
+    if (!f.program) f.program = TrueType.type42(f.ttf, L.ENCODING, L.UNICODE);
+    return f.program;
+  });
+}
+
+function fromBase64(text) {
+  var bin = atob(text), bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/* ---------- Fonts ---------- */
+
+/*
+ * Every font is a TrueType font. Those that come with Galley are in
+ * fonts/, each with its licence, and each as a script too, made by
+ * tools/pack-fonts.js, since a page opened as a file may not fetch the
+ * files beside it but may run the scripts it names, when it names them.
+ * fonts/index.js lists them with their metrics, so that text is set
+ * before any font is loaded; a font's script is loaded when the screen
+ * shows the font, or a page is written in it.
+ *
+ * Fonts the person using the page adds, by File, Add fonts, or Add a
+ * folder of fonts, are read here (truetype.js), kept in this browser
+ * (IndexedDB), and offered beside the others.
+ */
+var fontFiles = {}, fontData = {}, fontLoads = {}, screenFaces = {};
+
+function generic(f) {
+  return /Mono|Courier|Code|Typewriter/i.test(f.name + " " + f.familyName) ? "monospace"
+    : /Sans|Grotesk|Gothic|Helvetica|Arial/i.test(f.name + " " + f.familyName) ? "sans-serif" : "serif";
+}
+
+function register(f) {
+  L.registerFont({ name: f.name, family: "'GL " + f.name + "', " + generic(f), style: f.style, weight: f.weight,
+    widths: f.widths, ascent: f.ascent, descent: f.descent, bbox: f.bbox, italicAngle: f.italicAngle,
+    capHeight: f.capHeight, added: !!f.added, licence: f.licence || null });
+}
+
+(window.GALLEY_FONTS || []).forEach(function (f) { fontFiles[f.name] = f; register(f); });
+
+window.GALLEY_FONT_LOADED = function (v) { fontData[v.name] = { name: v.name, ttf: fromBase64(v.ttf) }; };
+
+function loadScript(src) {
+  return new Promise(function (ok, fail) {
+    var s = document.createElement("script");
+    s.src = src;
+    s.onload = function () { ok(); };
+    s.onerror = function () { s.remove(); fail(new Error("no " + src)); };
+    document.head.appendChild(s);
+  });
+}
+
+/* A font, its file loaded; null if there is none. */
+function getFont(name) {
+  if (fontData[name]) return Promise.resolve(fontData[name]);
+  var file = fontFiles[name];
+  if (!file) return Promise.resolve(null);
+  if (!fontLoads[name]) fontLoads[name] = loadScript(file.script).then(function () { return fontData[name] || null; });
+  return fontLoads[name];
+}
+
+/* The fonts the document uses, loaded. */
+function withFonts() {
+  return Promise.all(L.fontsUsed(doc).map(function (name) {
+    return getFont(name).then(function (f) { if (!f) throw new Error("the font " + name + " is not here"); return f; });
+  }));
+}
+
+/* The screen draws each font in the font itself: the browser is given
+   its file, as a font face of its own, when the document uses it. */
+function screenFonts() {
+  L.fontsUsed(doc).forEach(function (name) {
+    if (screenFaces[name] || typeof FontFace === "undefined") return;
+    screenFaces[name] = true;
+    getFont(name).then(function (f) {
+      if (!f) return;
+      var info = L.fontInfo(name);
+      var face = new FontFace("GL " + name, f.ttf, { style: info.style || "normal", weight: info.weight || "normal" });
+      return face.load().then(function () {
+        document.fonts.add(face);
+        measured = {}; measuredCount = 0;
+        draw();
+      });
+    }).catch(function () {});
+  });
+}
+
+/* The fonts added in this browser, kept in IndexedDB. */
+function fontStore(mode, work) {
+  return new Promise(function (ok, fail) {
+    if (!window.indexedDB) return ok(null);
+    var open;
+    try { open = indexedDB.open("galley", 1); } catch (e) { return ok(null); }
+    open.onupgradeneeded = function () { open.result.createObjectStore("fonts", { keyPath: "name" }); };
+    open.onerror = function () { ok(null); };
+    open.onsuccess = function () {
+      var tx = open.result.transaction("fonts", mode), store = tx.objectStore("fonts"), result = work(store);
+      tx.oncomplete = function () { open.result.close(); ok(result && "result" in result ? result.result : null); };
+      tx.onerror = function () { open.result.close(); fail(tx.error); };
+    };
+  });
+}
+
+function storedFonts() {
+  return fontStore("readonly", function (s) { return s.getAll(); })
+    .then(function (list) { return list || []; })
+    .catch(function () { return []; });
+}
+
+/* Fonts given to the page: files, or a folder, of which only the
+   TrueType fonts are taken, each read here, kept, and offered. A font
+   with the name of one the page has is not taken, nor one with no
+   letter, A to Z or a to z. */
+function addFonts(files, quiet) {
+  return Promise.all(files.map(function (file) {
+    return file.arrayBuffer().then(function (b) {
+      var bytes = new Uint8Array(b), m;
+      try { m = TrueType.metrics(bytes, L.ENCODING, L.UNICODE); } catch (e) { return { bad: file.name, why: e.message }; }
+      return { name: m.name, ttf: bytes, metrics: m };
+    });
+  })).then(function (list) {
+    var have = {};
+    L.fontsAvailable().forEach(function (f) { have[f.name] = true; });
+    function letters(m) { return m.widths.some(function (x, c) { return x >= 0 && ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)); }); }
+    var good = list.filter(function (f) { return !f.bad && !have[f.name] && letters(f.metrics); });
+    var skipped = list.filter(function (f) { return !f.bad && good.indexOf(f) < 0; });
+    var bad = list.filter(function (f) { return f.bad; });
+    var notes = [];
+    if (skipped.length) notes.push(skipped.length + " here already or without letters");
+    if (bad.length) notes.push(quiet ? bad.length + " other files passed over" : bad.map(function (f) { return f.bad + ", " + f.why; }).join("; "));
+    if (!good.length) { message("No fonts added" + (notes.length ? ": " + notes.join("; ") : "")); return; }
+    return fontStore("readwrite", function (s) { good.forEach(function (f) { s.put({ name: f.name, ttf: f.ttf, metrics: f.metrics }); }); })
+      .then(function () {
+        good.forEach(function (f) {
+          fontData[f.name] = { name: f.name, ttf: f.ttf };
+          f.metrics.added = true;
+          register(f.metrics);
+        });
+        buildPanel();
+        message("Added " + (good.length > 6 ? good.length + " fonts" : good.map(function (f) { return f.name; }).join(", ")) +
+          (notes.length ? "; " + notes.join("; ") : ""));
+      });
+  }).catch(function (err) { message("The fonts were not added: " + err.message); });
+}
+
+["fontfile", "fontfolder"].forEach(function (id) {
+  document.getElementById(id).addEventListener("change", function (e) {
+    var files = Array.from(e.target.files);
+    e.target.value = "";
+    addFonts(files, id === "fontfolder");
+  });
+});
+
+function forgetFonts() {
+  if (!confirm("Forget the fonts added in this browser? They go when the page is loaded again.")) return;
+  fontStore("readwrite", function (s) { s.clear(); }).then(function () { message("The added fonts are forgotten; load the page again"); });
+}
+
+/* At the start: the added fonts, from this browser. */
+function startFonts() {
+  storedFonts().then(function (list) {
+    list.forEach(function (f) {
+      fontData[f.name] = { name: f.name, ttf: f.ttf };
+      f.metrics.added = true;
+      register(f.metrics);
+    });
+    relayout(); buildPanel(); draw();
+    if (!L.fontsAvailable().length) message("No fonts: fonts/index.js is missing");
+  });
+}
+
+/* ---------- Start ---------- */
+
+(function start() {
+  try { var o = JSON.parse(recall("galley.opts") || "{}"); ["snap", "showGuides", "units"].forEach(function (k) { if (k in o) opts[k] = o[k]; }); } catch (e) {}
+  try { var d = JSON.parse(recall("galley.defaults") || "null"); if (d) for (var k in d) defaults[k] = d[k]; } catch (e) {}
+  var saved = null;
+  try { saved = JSON.parse(recall("galley.doc") || "null"); } catch (e) {}
+  if (!saved || !saved.pages) { saved = L.newDocument(); saved.title = "Untitled"; }
+  load(saved);
+  colours();
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { colours(); draw(); });
+  setTool("pointer");
+  pagesBar();
+  buildPanel();
+  new ResizeObserver(resize).observe(work);
+  resize();
+  canvas.focus();
+  startFonts();
+  var asked = new URLSearchParams(location.search).get("example");
+  if (asked) openExample(asked, false);
+})();
+</script>
+</body>
+</html>
