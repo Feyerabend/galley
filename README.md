@@ -10,7 +10,7 @@ they were made up into pages.
 It needs no server and no build: open `index.html` in a browser, as a
 file. It comes with three families of fonts, free ones, and takes
 others from the person using it.
-Or try it here: https://feyerabend.github.io/galley/?example=pagemaker
+Or try it here: https://feyerabend.github.io/galley/?example=pagemaker.
 
 ## The idea
 
