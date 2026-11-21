@@ -78,6 +78,7 @@ button, select, input, textarea { font: inherit; color: inherit; }
 #pages { display: flex; gap: 3px; align-items: center; overflow-x: auto; }
 #pages button { min-width: 22px; height: 18px; border: 1px solid var(--ink); background: var(--paper); font-size: 11px; padding: 0 3px; cursor: default; }
 #pages button.on { background: var(--hilite); color: var(--hilite-ink); }
+#pages button:disabled { opacity: .35; }
 #status .seg { display: flex; border: 1px solid var(--ink); margin-left: auto; }
 #status .seg button { border: 0; border-left: 1px solid var(--ink); background: var(--paper); padding: 0 8px; height: 18px; font-size: 12px; cursor: default; }
 #status .seg button:first-child { border-left: 0; }
@@ -139,21 +140,26 @@ dialog pre { max-height: 300px; overflow: auto; background: var(--chrome); paddi
     <button data-cmd="back">Send to back<span class="key">⌘B</span></button>
   </div></div>
   <div class="menu"><button>Layout</button><div class="items">
+    <button data-cmd="insertbefore">Insert page before this</button>
     <button data-cmd="insertpage">Insert page after this</button>
     <button data-cmd="removepage">Remove this page</button>
     <hr>
-    <button data-cmd="guides" data-check="showGuides">Guides</button>
     <button data-cmd="snap" data-check="snap">Snap to guides</button>
     <button data-cmd="clearguides">Remove ruler guides</button>
-    <hr>
+  </div></div>
+  <div class="menu"><button>View</button><div class="items">
     <button data-cmd="fit">Fit in window<span class="key">⌘0</span></button>
     <button data-cmd="zoom50">50% size</button>
     <button data-cmd="zoom75">75% size</button>
     <button data-cmd="zoom100">Actual size<span class="key">⌘1</span></button>
     <button data-cmd="zoom200">200% size<span class="key">⌘2</span></button>
     <button data-cmd="zoom400">400% size</button>
-  </div></div>
-  <div class="menu"><button>View</button><div class="items">
+    <hr>
+    <button data-cmd="guides" data-check="showGuides">Guides</button>
+    <button data-cmd="preview" data-check="preview">Preview<span class="key">P</span></button>
+    <hr>
+    <button data-cmd="prevpage">Previous page<span class="key">PgUp</span></button>
+    <button data-cmd="nextpage">Next page<span class="key">PgDn</span></button>
   </div></div>
 </nav>
 
@@ -239,7 +245,7 @@ var loaded = null;                   /* text to place: { story, after } */
 var drag = null;                     /* what the mouse is doing */
 var undoStack = [], redoStack = [], lastUndoTag = null, lastUndoTime = 0;
 var clipboard = null;
-var opts = { snap: true, showGuides: true, units: "mm", view: "screen" };
+var opts = { snap: true, showGuides: true, units: "mm", preview: false };
 var defaults = { font: "PTSerif-Regular", size: 12, leading: null, align: "left", indent: 0, spaceAfter: 0 };
 var view = { zoom: "fit", scale: 1, ox: 0, oy: 0 };
 var RULER = 20, PX = 4 / 3;          /* a ruler's width; CSS pixels to a point at 100% */
@@ -287,7 +293,7 @@ function relayout() { set = L.setDocument(doc); if (typeof screenFonts === "func
 function change(tag, fn) {
   var now = Date.now();
   if (!(tag && tag === lastUndoTag && now - lastUndoTime < 1500)) {
-    undoStack.push(JSON.stringify(doc));
+    undoStack.push(snapshot());
     if (undoStack.length > 200) undoStack.shift();
     redoStack = [];
   }
@@ -304,24 +310,23 @@ function changed() {
   store("galley.doc", JSON.stringify(doc));
 }
 
-function undo() {
-  if (!undoStack.length) return;
-  redoStack.push(JSON.stringify(doc));
-  var keep = selected;
-  load(JSON.parse(undoStack.pop()));
-  if (findItem(keep)) selected = keep;
-  lastUndoTag = null;
+/* An undo point: the document, and the page shown, so that undoing
+   (removing a page, say) shows the page the change was made on. */
+function snapshot() { return { doc: JSON.stringify(doc), page: pageIndex }; }
+
+function restore(from, to) {
+  if (!from.length) return;
+  to.push(snapshot());
+  var keep = selected, s = from.pop();
+  load(JSON.parse(s.doc));
+  pageIndex = Math.min(s.page, doc.pages.length - 1);
+  var f = findItem(keep);
+  if (f && f.page === pageIndex) selected = keep;
+  lastUndoTag = null; message("");
   buildPanel(); changed();
 }
-function redo() {
-  if (!redoStack.length) return;
-  undoStack.push(JSON.stringify(doc));
-  var keep = selected;
-  load(JSON.parse(redoStack.pop()));
-  if (findItem(keep)) selected = keep;
-  lastUndoTag = null;
-  buildPanel(); changed();
-}
+function undo() { restore(undoStack, redoStack); }
+function redo() { restore(redoStack, undoStack); }
 
 /* ---------- The view ---------- */
 
@@ -384,12 +389,16 @@ function draw() {
   ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
   ctx.strokeRect(Math.round(view.ox) - .5, Math.round(view.oy) - .5, Math.round(W * s) + 1, Math.round(H * s) + 1);
 
+  /* Preview: the page as it prints, with no guides, empty frames or
+     selection, and nothing that lies on the pasteboard */
   ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * view.ox, dpr * view.oy);
-  if (opts.showGuides) drawGuides(false);
+  if (opts.showGuides && !opts.preview) drawGuides(false);
+  if (opts.preview) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip(); }
   pageItems().forEach(drawItem);
-  pageItems().forEach(function (it) { if (it.type === "text") drawFrameOutline(it); });
+  if (opts.preview) ctx.restore();
+  else pageItems().forEach(function (it) { if (it.type === "text") drawFrameOutline(it); });
   var it = selectedItem();
-  if (it && findItem(it.id).page === pageIndex) drawSelection(it);
+  if (it && !opts.preview && findItem(it.id).page === pageIndex) drawSelection(it);
   if (drag && drag.kind === "create") drawRubber();
   if (drag && drag.kind === "guide") drawGuideDrag();
 
@@ -617,6 +626,7 @@ function drawRulers(cw, ch) {
 function banner() {
   var b = document.getElementById("banner"), text = "";
   if (loaded) text = "Text to place: click in a column, or drag a block. Esc puts it back.";
+  else if (opts.preview) text = "Preview: the page as it prints. Click, or press P, to go back.";
   b.textContent = text; b.style.display = text ? "block" : "none";
 }
 
@@ -684,6 +694,8 @@ canvas.addEventListener("mousedown", function (e) {
   closeMenus();
   var p = toPage(e);
   if (spaceDown) { drag = { kind: "pan", sx: p.sx, sy: p.sy, ox: view.ox, oy: view.oy }; return; }
+  /* nothing is edited unseen: a click in Preview goes back to editing */
+  if (opts.preview) { run("preview"); return; }
 
   /* a ruler: a new guide */
   if (p.sy < RULER || p.sx < RULER) {
@@ -809,7 +821,7 @@ window.addEventListener("mouseup", function (e) {
   draw();
 });
 
-function undoPoint() { undoStack.push(JSON.stringify(doc)); redoStack = []; lastUndoTag = null; }
+function undoPoint() { undoStack.push(snapshot()); redoStack = []; lastUndoTag = null; }
 
 function constrain(x0, y0, x, y) {
   var dx = x - x0, dy = y - y0, a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
@@ -949,6 +961,7 @@ window.addEventListener("keydown", function (e) {
   }
   var tools = { v: "pointer", t: "text", l: "line", h: "hline", b: "rect", r: "round", o: "oval" };
   if (tools[k]) setTool(tools[k]);
+  if (k === "p") run("preview");
   if (e.key === "PageDown") goPage(pageIndex + 1);
   if (e.key === "PageUp") goPage(pageIndex - 1);
 });
@@ -1047,15 +1060,25 @@ function run(cmd) {
   case "delete": if (it) { change(null, function () { removeItem(it.id); selected = null; }); buildPanel(); } break;
   case "front": if (it) change(null, function () { var f = findItem(it.id); var a = doc.pages[f.page].items; a.splice(f.index, 1); a.push(it); }); break;
   case "back": if (it) change(null, function () { var f = findItem(it.id); var a = doc.pages[f.page].items; a.splice(f.index, 1); a.unshift(it); }); break;
-  case "insertpage": change(null, function () { doc.pages.splice(pageIndex + 1, 0, { items: [] }); pageIndex++; selected = null; }); buildPanel(); break;
+  case "insertbefore":
+  case "insertpage":
+    change(null, function () {
+      var at = pageIndex + (cmd === "insertpage" ? 1 : 0);
+      doc.pages.splice(at, 0, { items: [] }); pageIndex = at; selected = null;
+    });
+    buildPanel(); message("Inserted page " + (pageIndex + 1) + " of " + doc.pages.length); break;
   case "removepage":
     if (doc.pages.length < 2) { message("A document keeps one page at least"); return; }
     if (pageItems().length && !confirm("Remove page " + (pageIndex + 1) + " and everything on it?")) return;
+    var gone = pageIndex + 1;
     change(null, function () {
       pageItems().slice().forEach(function (x) { removeItem(x.id); });
       doc.pages.splice(pageIndex, 1); pageIndex = Math.min(pageIndex, doc.pages.length - 1); selected = null;
     });
-    buildPanel(); break;
+    buildPanel(); message("Removed page " + gone + ". Undo brings it back."); break;
+  case "prevpage": goPage(pageIndex - 1); break;
+  case "nextpage": goPage(pageIndex + 1); break;
+  case "preview": opts.preview = !opts.preview; draw(); break;
   case "guides": opts.showGuides = !opts.showGuides; saveOpts(); draw(); break;
   case "snap": opts.snap = !opts.snap; saveOpts(); break;
   case "clearguides": change(null, function () { doc.guides = { x: [], y: [] }; }); break;
@@ -1158,6 +1181,8 @@ function refreshMenus() {
     if (c === "undo") b.disabled = !undoStack.length;
     if (c === "redo") b.disabled = !redoStack.length;
     if (c === "removepage") b.disabled = doc.pages.length < 2;
+    if (c === "prevpage") b.disabled = pageIndex === 0;
+    if (c === "nextpage") b.disabled = pageIndex === doc.pages.length - 1;
     var check = b.dataset.check;
     if (check) b.classList.toggle("checked", !!opts[check]);
   });
@@ -1170,11 +1195,14 @@ function pagesBar() {
   var html = "";
   doc.pages.forEach(function (p, i) { html += '<button data-page="' + i + '" class="' + (i === pageIndex ? "on" : "") + '">' + (i + 1) + "</button>"; });
   html += '<button data-page="add" title="Insert a page after this one">+</button>';
+  html += '<button data-page="remove" title="Remove this page"' + (doc.pages.length < 2 ? " disabled" : "") + ">−</button>";
   bar.innerHTML = html;
 }
 document.getElementById("pages").addEventListener("click", function (e) {
   var b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.page === "add") run("insertpage"); else goPage(+b.dataset.page);
+  if (b.dataset.page === "add") run("insertpage");
+  else if (b.dataset.page === "remove") run("removepage");
+  else goPage(+b.dataset.page);
 });
 function goPage(i) {
   if (i < 0 || i >= doc.pages.length || i === pageIndex) return;
